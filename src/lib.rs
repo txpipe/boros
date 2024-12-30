@@ -1,5 +1,10 @@
+pub mod chain;
+pub mod fanout;
+pub mod ingest;
 pub mod model;
+pub mod query;
 pub mod sources;
+pub mod state;
 
 use thiserror::Error;
 
