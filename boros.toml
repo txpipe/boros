@@ -1,0 +1,6 @@
+[submission.source]
+type = "Http"
+addr = "0.0.0.0:5000"
+
+[submission.submit]
+path = "0.0.0.0:5000"
