@@ -3,6 +3,7 @@ use std::time::Duration;
 use gasket::{framework::*, messaging::Message};
 use serde::Deserialize;
 use tokio::time::sleep;
+use tracing::info;
 
 use crate::chain::{Event, SourceOutputPort};
 
@@ -32,7 +33,8 @@ pub struct Worker;
 
 #[async_trait::async_trait(?Send)]
 impl gasket::framework::Worker<Stage> for Worker {
-    async fn bootstrap(_stage: &Stage) -> Result<Self, WorkerError> {
+    async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
+        info!("peer connection {}", stage.config.peer);
         Ok(Self)
     }
 
@@ -42,7 +44,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     }
 
     async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
-        dbg!("new block");
+        info!("new block");
 
         stage
             .output

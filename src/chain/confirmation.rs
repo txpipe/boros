@@ -2,6 +2,7 @@ use gasket::{
     framework::*,
     messaging::{tokio::ChannelSendAdapter, SendAdapter},
 };
+use tracing::info;
 
 use crate::monitor;
 
@@ -28,7 +29,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     }
 
     async fn execute(&mut self, _unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
-        dbg!("confirmation stage");
+        info!("txs confirmation");
 
         stage
             .monitor

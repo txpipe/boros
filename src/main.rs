@@ -2,7 +2,6 @@ use std::{env, error::Error};
 
 use anyhow::Result;
 use serde::Deserialize;
-use submission::SubmissionConfig;
 use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -38,7 +37,7 @@ async fn main() -> Result<()> {
 
 #[derive(Deserialize)]
 struct Config {
-    submission: SubmissionConfig,
+    submission: submission::Config,
     monitor: monitor::Config,
     chain: chain::Config,
 }

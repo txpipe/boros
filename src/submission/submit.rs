@@ -2,6 +2,7 @@ use gasket::{
     framework::*,
     messaging::{tokio::ChannelSendAdapter, SendAdapter},
 };
+use tracing::info;
 
 use crate::monitor;
 
@@ -27,8 +28,12 @@ impl gasket::framework::Worker<Stage> for Worker {
         Ok(WorkSchedule::Unit(evt.payload))
     }
 
-    async fn execute(&mut self, _unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
-        dbg!("submit stage");
+    async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
+        let tx = match unit.clone() {
+            Event::RawTx(tx) => tx,
+        };
+
+        info!("tx {tx} submitted");
 
         stage
             .monitor

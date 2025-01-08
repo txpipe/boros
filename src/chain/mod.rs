@@ -10,7 +10,7 @@ mod sources;
 
 #[derive(Debug, Clone)]
 pub enum Event {
-    CborBlock(Vec<u8>),
+    CborBlock(()),
 }
 
 pub type SourceOutputPort = gasket::messaging::OutputPort<Event>;

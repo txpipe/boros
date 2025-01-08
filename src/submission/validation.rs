@@ -1,4 +1,5 @@
 use gasket::framework::*;
+use tracing::info;
 
 use super::{Event, ValidationInputPort, ValidationOutputPort};
 
@@ -23,7 +24,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     }
 
     async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
-        dbg!("validation stage");
+        info!("validation stage");
 
         stage
             .output

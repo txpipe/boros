@@ -1,5 +1,6 @@
 use gasket::framework::*;
 use serde::Deserialize;
+use tracing::info;
 
 use super::{Event, HookInputPort};
 
@@ -38,8 +39,8 @@ impl gasket::framework::Worker<Stage> for Worker {
         Ok(WorkSchedule::Unit(evt.payload))
     }
 
-    async fn execute(&mut self, _unit: &Event, _stage: &mut Stage) -> Result<(), WorkerError> {
-        dbg!("webhook stage");
+    async fn execute(&mut self, _unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
+        info!("POST request {}", stage.config.url);
         Ok(())
     }
 }

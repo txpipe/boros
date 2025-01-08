@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use axum::{http::StatusCode, response::IntoResponse};
+use axum::{http::StatusCode, response::IntoResponse, Json};
 use gasket::messaging::{
     tokio::{ChannelRecvAdapter, ChannelSendAdapter},
     Message, SendAdapter,
@@ -25,12 +25,9 @@ pub type ValidationOutputPort = gasket::messaging::OutputPort<Event>;
 pub type SubmitInputPort = gasket::messaging::InputPort<Event>;
 
 #[derive(Deserialize, Clone)]
-pub struct SubmissionConfig {}
+pub struct Config {}
 
-pub async fn run(
-    config: SubmissionConfig,
-    monitor_sender: ChannelSendAdapter<monitor::Event>,
-) -> Result<()> {
+pub async fn run(config: Config, monitor_sender: ChannelSendAdapter<monitor::Event>) -> Result<()> {
     let (server_sender, server_receiver) = gasket::messaging::tokio::mpsc_channel::<Event>(50);
 
     let server = server(config.clone(), server_sender);
@@ -41,19 +38,24 @@ pub async fn run(
     Ok(())
 }
 
-async fn server(_config: SubmissionConfig, sender: ChannelSendAdapter<Event>) -> Result<()> {
+#[derive(Debug, Deserialize)]
+struct TxRequest {
+    tx: String,
+}
+
+async fn server(_config: Config, sender: ChannelSendAdapter<Event>) -> Result<()> {
     let sender = Arc::new(Mutex::new(sender));
     let addr = "0.0.0.0:5000";
     let app = axum::Router::new().route(
         "/tx",
         axum::routing::post({
             let sender = sender.clone();
-            || async move {
+            |Json(input): Json<TxRequest>| async move {
                 let mut f = sender.lock().await;
 
                 if let Err(error) = f
                     .send(Message {
-                        payload: Event::RawTx(String::from("xx")),
+                        payload: Event::RawTx(input.tx),
                     })
                     .await
                 {
@@ -75,7 +77,7 @@ async fn server(_config: SubmissionConfig, sender: ChannelSendAdapter<Event>) ->
 }
 
 async fn pipeline(
-    _config: SubmissionConfig,
+    _config: Config,
     server_receiver: ChannelRecvAdapter<Event>,
     monitor_sender: ChannelSendAdapter<monitor::Event>,
 ) -> Result<()> {
