@@ -7,6 +7,7 @@ use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod monitor;
 mod submission;
 
 #[tokio::main]
@@ -22,9 +23,13 @@ async fn main() -> Result<()> {
         .init();
 
     let config = Config::new().expect("invalid config file");
-    let submission = submission::run(config.submission);
 
-    try_join!(submission)?;
+    let (sender, receiver) = gasket::messaging::tokio::mpsc_channel::<monitor::Event>(50);
+
+    let submission = submission::run(config.submission, sender);
+    let monitor = monitor::run(config.monitor, receiver);
+
+    try_join!(submission, monitor)?;
 
     Ok(())
 }
@@ -32,6 +37,7 @@ async fn main() -> Result<()> {
 #[derive(Deserialize)]
 struct Config {
     submission: SubmissionConfig,
+    monitor: monitor::Config,
 }
 impl Config {
     pub fn new() -> Result<Self, Box<dyn Error>> {

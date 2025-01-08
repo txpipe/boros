@@ -10,6 +10,8 @@ use serde::Deserialize;
 use tokio::{sync::Mutex, try_join};
 use tracing::{error, info};
 
+use crate::monitor;
+
 mod sources;
 mod submit;
 mod validation;
@@ -27,11 +29,14 @@ pub type SubmitInputPort = gasket::messaging::InputPort<Event>;
 #[derive(Deserialize, Clone)]
 pub struct SubmissionConfig {}
 
-pub async fn run(config: SubmissionConfig) -> Result<()> {
-    let (sender, receiver) = gasket::messaging::tokio::mpsc_channel::<Event>(50);
+pub async fn run(
+    config: SubmissionConfig,
+    monitor_sender: ChannelSendAdapter<monitor::Event>,
+) -> Result<()> {
+    let (server_sender, server_receiver) = gasket::messaging::tokio::mpsc_channel::<Event>(50);
 
-    let server = server(config.clone(), sender);
-    let pipeline = pipeline(config.clone(), receiver);
+    let server = server(config.clone(), server_sender);
+    let pipeline = pipeline(config.clone(), server_receiver, monitor_sender);
 
     try_join!(server, pipeline)?;
 
@@ -71,17 +76,22 @@ async fn server(_config: SubmissionConfig, sender: ChannelSendAdapter<Event>) ->
     Ok(())
 }
 
-async fn pipeline(_config: SubmissionConfig, receiver: ChannelRecvAdapter<Event>) -> Result<()> {
+async fn pipeline(
+    _config: SubmissionConfig,
+    server_receiver: ChannelRecvAdapter<Event>,
+    monitor_sender: ChannelSendAdapter<monitor::Event>,
+) -> Result<()> {
     tokio::spawn(async {
         let mut validation = validation::Stage {
             input: Default::default(),
             output: Default::default(),
         };
 
-        validation.input.connect(receiver);
+        validation.input.connect(server_receiver);
 
         let mut submit = submit::Stage {
             input: Default::default(),
+            monitor: monitor_sender,
         };
         gasket::messaging::tokio::connect_ports(&mut validation.output, &mut submit.input, 100);
 

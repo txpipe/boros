@@ -1,7 +1,4 @@
-use std::time::Duration;
-
 use gasket::framework::*;
-use tokio::time::sleep;
 
 use super::{Event, ValidationInputPort, ValidationOutputPort};
 
@@ -12,19 +9,30 @@ pub struct Stage {
     pub output: ValidationOutputPort,
 }
 
-#[derive(Default)]
 pub struct Worker;
-impl From<&Stage> for Worker {
-    fn from(_: &Stage) -> Self {
-        Self
+
+#[async_trait::async_trait(?Send)]
+impl gasket::framework::Worker<Stage> for Worker {
+    async fn bootstrap(_stage: &Stage) -> Result<Self, WorkerError> {
+        Ok(Self)
+    }
+
+    async fn schedule(&mut self, stage: &mut Stage) -> Result<WorkSchedule<Event>, WorkerError> {
+        let evt = stage.input.recv().await.or_panic()?;
+        Ok(WorkSchedule::Unit(evt.payload))
+    }
+
+    async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
+        dbg!("validation stage");
+
+        stage
+            .output
+            .send(gasket::messaging::Message {
+                payload: unit.clone(),
+            })
+            .await
+            .or_panic()?;
+
+        Ok(())
     }
 }
-
-gasket::impl_mapper!(|_worker: Worker, stage: Stage, unit: Event| => {
-    let output = unit.clone();
-
-    dbg!("validation stage");
-    sleep(Duration::from_secs(5)).await;
-
-    output
-});

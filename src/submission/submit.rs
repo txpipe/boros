@@ -1,4 +1,9 @@
-use gasket::framework::*;
+use gasket::{
+    framework::*,
+    messaging::{tokio::ChannelSendAdapter, SendAdapter},
+};
+
+use crate::monitor;
 
 use super::{Event, SubmitInputPort};
 
@@ -6,6 +11,7 @@ use super::{Event, SubmitInputPort};
 #[stage(name = "submit", unit = "Event", worker = "Worker")]
 pub struct Stage {
     pub input: SubmitInputPort,
+    pub monitor: ChannelSendAdapter<monitor::Event>,
 }
 
 pub struct Worker;
@@ -21,8 +27,17 @@ impl gasket::framework::Worker<Stage> for Worker {
         Ok(WorkSchedule::Unit(evt.payload))
     }
 
-    async fn execute(&mut self, _unit: &Event, _stage: &mut Stage) -> Result<(), WorkerError> {
+    async fn execute(&mut self, _unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
         dbg!("submit stage");
+
+        stage
+            .monitor
+            .send(gasket::messaging::Message {
+                payload: monitor::Event {},
+            })
+            .await
+            .or_panic()?;
+
         Ok(())
     }
 }
