@@ -12,7 +12,6 @@ use tracing::{error, info};
 
 use crate::monitor;
 
-mod sources;
 mod submit;
 mod validation;
 
@@ -21,7 +20,6 @@ pub enum Event {
     RawTx(String),
 }
 
-pub type SourceOutputPort = gasket::messaging::OutputPort<Event>;
 pub type ValidationInputPort = gasket::messaging::InputPort<Event>;
 pub type ValidationOutputPort = gasket::messaging::OutputPort<Event>;
 pub type SubmitInputPort = gasket::messaging::InputPort<Event>;

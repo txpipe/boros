@@ -17,6 +17,7 @@ async-trait = "0.1.85"
 axum = "0.8.1"
 config = { version = "0.15.4", features = ["toml"] }
 gasket = { version = "0.8.0", features = ["derive"] }
+pallas = "0.32.0"
 serde = { version = "1.0.217", features = ["derive"] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"

@@ -7,6 +7,7 @@ use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod chain;
 mod monitor;
 mod submission;
 
@@ -26,10 +27,11 @@ async fn main() -> Result<()> {
 
     let (sender, receiver) = gasket::messaging::tokio::mpsc_channel::<monitor::Event>(50);
 
-    let submission = submission::run(config.submission, sender);
     let monitor = monitor::run(config.monitor, receiver);
+    let submission = submission::run(config.submission, sender.clone());
+    let chain = chain::run(config.chain, sender);
 
-    try_join!(submission, monitor)?;
+    try_join!(monitor, submission, chain)?;
 
     Ok(())
 }
@@ -38,6 +40,7 @@ async fn main() -> Result<()> {
 struct Config {
     submission: SubmissionConfig,
     monitor: monitor::Config,
+    chain: chain::Config,
 }
 impl Config {
     pub fn new() -> Result<Self, Box<dyn Error>> {
