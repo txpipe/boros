@@ -1,67 +1,31 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use axum::{http::StatusCode, response::IntoResponse, Json};
-use gasket::messaging::{
-    tokio::{ChannelRecvAdapter, ChannelSendAdapter},
-    Message, SendAdapter,
-};
+use gasket::messaging::tokio::ChannelSendAdapter;
 use serde::Deserialize;
-use tokio::{sync::Mutex, try_join};
-use tracing::{error, info};
+use tokio::try_join;
+use tracing::info;
 
 use crate::monitor;
 
-mod submit;
-mod validation;
-
-#[derive(Debug, Clone)]
-pub enum Event {
-    RawTx(String),
-}
-
-pub type ValidationInputPort = gasket::messaging::InputPort<Event>;
-pub type ValidationOutputPort = gasket::messaging::OutputPort<Event>;
-pub type SubmitInputPort = gasket::messaging::InputPort<Event>;
-
-#[derive(Deserialize, Clone)]
-pub struct Config {}
+mod fanout;
+mod ingest;
 
 pub async fn run(config: Config, monitor_sender: ChannelSendAdapter<monitor::Event>) -> Result<()> {
-    let (server_sender, server_receiver) = gasket::messaging::tokio::mpsc_channel::<Event>(50);
-
-    let server = server(config.clone(), server_sender);
-    let pipeline = pipeline(config.clone(), server_receiver, monitor_sender);
+    let server = server(config.clone());
+    let pipeline = pipeline(config.clone(), monitor_sender);
 
     try_join!(server, pipeline)?;
 
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
-struct TxRequest {
-    tx: String,
-}
-
-async fn server(_config: Config, sender: ChannelSendAdapter<Event>) -> Result<()> {
-    let sender = Arc::new(Mutex::new(sender));
+async fn server(_config: Config) -> Result<()> {
     let addr = "0.0.0.0:5000";
     let app = axum::Router::new().route(
         "/tx",
         axum::routing::post({
-            let sender = sender.clone();
             |Json(input): Json<TxRequest>| async move {
-                let mut f = sender.lock().await;
-
-                if let Err(error) = f
-                    .send(Message {
-                        payload: Event::RawTx(input.tx),
-                    })
-                    .await
-                {
-                    error!(?error);
-                    return (StatusCode::INTERNAL_SERVER_ERROR).into_response();
-                }
+                dbg!(input.tx);
 
                 (StatusCode::ACCEPTED).into_response()
             }
@@ -78,32 +42,37 @@ async fn server(_config: Config, sender: ChannelSendAdapter<Event>) -> Result<()
 
 async fn pipeline(
     _config: Config,
-    server_receiver: ChannelRecvAdapter<Event>,
     monitor_sender: ChannelSendAdapter<monitor::Event>,
 ) -> Result<()> {
     tokio::spawn(async {
-        let mut validation = validation::Stage {
-            input: Default::default(),
-            output: Default::default(),
+        let ingest = ingest::Stage {
+            monitor: monitor_sender.clone(),
         };
 
-        validation.input.connect(server_receiver);
-
-        let mut submit = submit::Stage {
-            input: Default::default(),
+        let fanout = fanout::Stage {
             monitor: monitor_sender,
         };
-        gasket::messaging::tokio::connect_ports(&mut validation.output, &mut submit.input, 100);
 
         let policy: gasket::runtime::Policy = Default::default();
 
-        let validation = gasket::runtime::spawn_stage(validation, policy.clone());
-        let submit = gasket::runtime::spawn_stage(submit, policy.clone());
+        let ingest = gasket::runtime::spawn_stage(ingest, policy.clone());
+        let fanout = gasket::runtime::spawn_stage(fanout, policy.clone());
 
-        let daemon = gasket::daemon::Daemon::new(vec![validation, submit]);
+        let daemon = gasket::daemon::Daemon::new(vec![ingest, fanout]);
         daemon.block();
     })
     .await?;
 
     Ok(())
+}
+
+#[derive(Deserialize, Clone)]
+pub struct Config {}
+
+#[derive(Debug)]
+pub struct Transaction {}
+
+#[derive(Debug, Deserialize)]
+struct TxRequest {
+    tx: String,
 }

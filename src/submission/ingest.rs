@@ -1,17 +1,18 @@
+use std::time::Duration;
+
 use gasket::{
     framework::*,
     messaging::{tokio::ChannelSendAdapter, SendAdapter},
 };
+use tokio::time::sleep;
 use tracing::info;
 
+use super::Transaction;
 use crate::monitor;
 
-use super::{Event, SubmitInputPort};
-
 #[derive(Stage)]
-#[stage(name = "submit", unit = "Event", worker = "Worker")]
+#[stage(name = "ingest", unit = "Transaction", worker = "Worker")]
 pub struct Stage {
-    pub input: SubmitInputPort,
     pub monitor: ChannelSendAdapter<monitor::Event>,
 }
 
@@ -23,17 +24,17 @@ impl gasket::framework::Worker<Stage> for Worker {
         Ok(Self)
     }
 
-    async fn schedule(&mut self, stage: &mut Stage) -> Result<WorkSchedule<Event>, WorkerError> {
-        let evt = stage.input.recv().await.or_panic()?;
-        Ok(WorkSchedule::Unit(evt.payload))
+    async fn schedule(
+        &mut self,
+        _stage: &mut Stage,
+    ) -> Result<WorkSchedule<Transaction>, WorkerError> {
+        // TODO: fetch data from db
+        sleep(Duration::from_secs(30)).await;
+        Ok(WorkSchedule::Unit(Transaction {}))
     }
 
-    async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
-        let tx = match unit.clone() {
-            Event::RawTx(tx) => tx,
-        };
-
-        info!("tx {tx} submitted");
+    async fn execute(&mut self, _unit: &Transaction, stage: &mut Stage) -> Result<(), WorkerError> {
+        info!("fanout");
 
         stage
             .monitor
