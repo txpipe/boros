@@ -1,0 +1,16 @@
+FROM rust:1.84.0-slim-bullseye AS build
+
+WORKDIR /app
+
+RUN apt update
+RUN apt install -y build-essential pkg-config libssl-dev libsasl2-dev cmake
+
+COPY ./Cargo.toml ./Cargo.toml
+COPY . .
+
+RUN cargo build --release --bin=boros
+
+FROM alpine:3.21.2
+COPY --from=build /app/target/release/boros .
+CMD ["./boros"]
+LABEL service=boros
