@@ -1,20 +1,14 @@
 use std::time::Duration;
 
-use gasket::{
-    framework::*,
-    messaging::{tokio::ChannelSendAdapter, SendAdapter},
-};
+use gasket::framework::*;
 use tokio::time::sleep;
 use tracing::info;
 
 use super::Transaction;
-use crate::monitor;
 
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Transaction", worker = "Worker")]
-pub struct Stage {
-    pub monitor: ChannelSendAdapter<monitor::Event>,
-}
+pub struct Stage {}
 
 pub struct Worker;
 
@@ -33,16 +27,12 @@ impl gasket::framework::Worker<Stage> for Worker {
         Ok(WorkSchedule::Unit(Transaction {}))
     }
 
-    async fn execute(&mut self, _unit: &Transaction, stage: &mut Stage) -> Result<(), WorkerError> {
-        info!("fanout");
-
-        stage
-            .monitor
-            .send(gasket::messaging::Message {
-                payload: monitor::Event {},
-            })
-            .await
-            .or_panic()?;
+    async fn execute(
+        &mut self,
+        _unit: &Transaction,
+        _stage: &mut Stage,
+    ) -> Result<(), WorkerError> {
+        info!("ingest");
 
         Ok(())
     }

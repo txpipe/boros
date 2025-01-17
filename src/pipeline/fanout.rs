@@ -1,18 +1,14 @@
 use std::time::Duration;
 
-use gasket::{framework::*, messaging::tokio::ChannelSendAdapter};
+use gasket::framework::*;
 use tokio::time::sleep;
 use tracing::info;
-
-use crate::monitor;
 
 use super::Transaction;
 
 #[derive(Stage)]
 #[stage(name = "fanout", unit = "Transaction", worker = "Worker")]
-pub struct Stage {
-    pub monitor: ChannelSendAdapter<monitor::Event>,
-}
+pub struct Stage {}
 
 pub struct Worker;
 

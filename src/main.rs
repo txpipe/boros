@@ -6,9 +6,9 @@ use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod chain;
-mod monitor;
-mod submission;
+mod pipeline;
+mod server;
+mod storage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,25 +22,18 @@ async fn main() -> Result<()> {
         .with(env_filter)
         .init();
 
-    let config = Config::new().expect("invalid config file");
+    let _config = Config::new().expect("invalid config file");
 
-    let (sender, receiver) = gasket::messaging::tokio::mpsc_channel::<monitor::Event>(50);
+    let pipeline = pipeline::run();
+    let server = server::run();
 
-    let monitor = monitor::run(config.monitor, receiver);
-    let submission = submission::run(config.submission, sender.clone());
-    let chain = chain::run(config.chain, sender);
-
-    try_join!(monitor, submission, chain)?;
+    try_join!(pipeline, server)?;
 
     Ok(())
 }
 
 #[derive(Deserialize)]
-struct Config {
-    submission: submission::Config,
-    monitor: monitor::Config,
-    chain: chain::Config,
-}
+struct Config {}
 impl Config {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let config = config::Config::builder()
