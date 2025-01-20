@@ -1,0 +1,10 @@
+# Decision to choose an entry point server
+
+**status**: draft
+
+## Context
+
+
+## Decision
+
+
