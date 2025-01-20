@@ -14,10 +14,12 @@ authors = ["Santiago Carmuega <santiago@carmuega.me>"]
 [dependencies]
 anyhow = "1.0.95"
 async-trait = "0.1.85"
+chrono = "0.4.39"
 config = { version = "0.15.4", features = ["toml"] }
 gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["derive"] }
 pallas = "0.32.0"
 serde = { version = "1.0.217", features = ["derive"] }
+sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
 tonic = { version = "0.12.3", features = ["tls"] }
 tonic-reflection = "0.12.3"
