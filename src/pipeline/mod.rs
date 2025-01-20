@@ -5,7 +5,9 @@ mod ingest;
 mod monitor;
 
 #[derive(Debug)]
-pub struct Transaction {}
+pub struct Transaction {
+    pub cbor: Vec<u8>,
+}
 
 pub async fn run() -> Result<()> {
     tokio::spawn(async {

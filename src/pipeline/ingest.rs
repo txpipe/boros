@@ -24,7 +24,9 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<WorkSchedule<Transaction>, WorkerError> {
         // TODO: fetch data from db
         sleep(Duration::from_secs(30)).await;
-        Ok(WorkSchedule::Unit(Transaction {}))
+        Ok(WorkSchedule::Unit(Transaction {
+            cbor: vec![0, 1, 2, 3],
+        }))
     }
 
     async fn execute(
@@ -33,7 +35,7 @@ impl gasket::framework::Worker<Stage> for Worker {
         _stage: &mut Stage,
     ) -> Result<(), WorkerError> {
         info!("ingest");
-
+        
         Ok(())
     }
 }
