@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO tx (\n                    tx_cbor,\n                    status,\n                    created_at,\n                    updated_at\n                )\n                VALUES ($1, $2, $3, $4)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "6db3d5fc9d40698132484b0959b1649e48aa73d9c2b002075f9b2c5f90ea5cd8"
+}
