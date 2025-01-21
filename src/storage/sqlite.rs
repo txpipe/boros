@@ -43,6 +43,7 @@ impl FromRow<'_, SqliteRow> for TransactionStorage {
             id: row.try_get("id")?,
             tx_cbor: row.try_get("tx_cbor")?,
             status: row.try_get("status")?,
+            priority: row.try_get("priority")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
