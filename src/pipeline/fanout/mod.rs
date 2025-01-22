@@ -11,8 +11,6 @@ mod tests {
     use super::*;
     use crate::storage::in_memory_db::CborTransactionsDb;
     use crate::{Config, PeerManagerConfig};
-    use std::net::SocketAddr;
-    use std::str::FromStr;
     use std::sync::{Arc, Mutex};
     use std::vec;
 
@@ -28,14 +26,8 @@ mod tests {
             peer_manager: PeerManagerConfig {
                 peers: vec!["".to_string()],
             },
-            server: crate::server::Config {
-                listen_address: SocketAddr::from_str("[::1]:50052").unwrap(),
-            },
-            storage: crate::storage::Config {
-                db_path: "dev.db".into(),
-            },
         };
-
+        
         // Run mock node
 
         // Run Fanout Stage
