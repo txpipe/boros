@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                            INSERT INTO tx_dependence (\n                                dependent_id,\n                                required_id\n                            )\n                            VALUES ($1, $2)\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "82a79d3e89fe0a1d38f1eeb7e87170273ffc83ec50b40099663762118cb0edf8"
+}

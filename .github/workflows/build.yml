@@ -14,7 +14,7 @@ jobs:
         include:
           - context: .
             file: Dockerfile
-            endpoint: demeter-run/boros
+            endpoint: txpipe/boros
 
     runs-on: ubuntu-latest
     steps:
