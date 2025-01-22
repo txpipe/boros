@@ -19,7 +19,9 @@ mod tests {
     #[test]
     fn test_fanout_stage() {
         let cbor_txs_db = CborTransactionsDb {
-            cbor_txs: Arc::new(Mutex::new(vec![vec![1, 2, 3]])),
+            cbor_txs: Arc::new(Mutex::new(vec![
+                vec![1, 2, 3]
+            ])),
         };
 
         let config = Config {
