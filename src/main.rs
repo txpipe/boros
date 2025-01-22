@@ -35,13 +35,13 @@ async fn main() -> Result<()> {
 }
 
 #[derive(Deserialize)]
-struct PeerManager {
+struct PeerManagerConfig {
     peers: Vec<String>,
 }
 
 #[derive(Deserialize)]
 struct Config {
-    peer_manager: PeerManager,
+    peer_manager: PeerManagerConfig,
 }
 
 impl Config {

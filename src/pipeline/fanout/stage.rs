@@ -15,6 +15,15 @@ pub struct Stage {
     pub config: Config,
 }
 
+impl Stage {
+    pub fn new(cbor_txs_db: CborTransactionsDb, config: Config) -> Self {
+        Self {
+            cbor_txs_db,
+            config,
+        }
+    }
+}
+
 pub struct Worker {
     tx_submit_peer_manager: TxSubmitPeerManager,
 }
@@ -39,23 +48,19 @@ impl gasket::framework::Worker<Stage> for Worker {
 
     async fn schedule(
         &mut self,
-        _stage: &mut Stage,
+        stage: &mut Stage,
     ) -> Result<WorkSchedule<Transaction>, WorkerError> {
-        info!("Cbor Transactions Length: {}", _stage.cbor_txs_db.cbor_txs_deque.lock().unwrap().len());
+        info!("Cbor Transactions Length: {}", stage.cbor_txs_db.cbor_txs.lock().unwrap().len());
         
-        if let Some(tx_cbor) = _stage.cbor_txs_db.dequeue_tx() {
+        if let Some(tx_cbor) = stage.cbor_txs_db.pop_tx() {
             return Ok(WorkSchedule::Unit(Transaction {
                 cbor: tx_cbor
             }));
         } else {
+            // TODO: should we really have a sleep here?
             sleep(Duration::from_secs(30)).await;
             return Ok(WorkSchedule::Idle);
         }
-        // TODO: fetch data from db
-        // Pass transaction bytes (maybe add a cbor field (?))
-        // Ok(WorkSchedule::Unit(Transaction {
-        //     cbor: tx_cbor
-        // }))
     }
 
     async fn execute(

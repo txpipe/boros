@@ -14,7 +14,7 @@ pub struct Transaction {
 pub async fn run(cbor_txs_db: CborTransactionsDb, config: Config) -> Result<()> {
     tokio::spawn(async {
         let ingest = ingest::Stage {};
-        let fanout = fanout::Stage { cbor_txs_db: cbor_txs_db, config: config };
+        let fanout = fanout::Stage::new(cbor_txs_db, config);
         let monitor = monitor::Stage {};
 
         let policy: gasket::runtime::Policy = Default::default();
