@@ -20,6 +20,7 @@ gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["der
 hex = "0.4.3"
 itertools = "0.14.0"
 pallas = "0.32.0"
+rocket = "0.5.1"
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
