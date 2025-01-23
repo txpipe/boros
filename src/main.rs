@@ -28,13 +28,13 @@ async fn main() -> Result<()> {
 
     let config = Config::new().expect("invalid config file");
 
-    let storage = Arc::new(SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?);
+    let storage = SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?;
     storage.migrate().await?;
 
-    let _tx_storage = SqliteTransaction::new(storage.clone());
+    let tx_storage = Arc::new(SqliteTransaction::new(storage));
 
     let pipeline = pipeline::run();
-    let server = server::run(config.server);
+    let server = server::run(config.server, tx_storage.clone());
 
     try_join!(pipeline, server)?;
 

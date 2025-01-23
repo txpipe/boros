@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Result;
 use pallas::interop::utxorpc::spec as u5c;
@@ -6,9 +6,11 @@ use serde::Deserialize;
 use tonic::transport::Server;
 use tracing::{error, info};
 
+use crate::storage::sqlite::SqliteTransaction;
+
 mod utxorpc;
 
-pub async fn run(config: Config) -> Result<()> {
+pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<()> {
     tokio::spawn(async move {
         let reflection = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(u5c::submit::FILE_DESCRIPTOR_SET)
@@ -17,7 +19,7 @@ pub async fn run(config: Config) -> Result<()> {
             .build_v1alpha()
             .unwrap();
 
-        let submit_service = utxorpc::SubmitServiceImpl {};
+        let submit_service = utxorpc::SubmitServiceImpl::new(tx_storage);
         let submit_service =
             u5c::submit::submit_service_server::SubmitServiceServer::new(submit_service);
 

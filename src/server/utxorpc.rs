@@ -1,10 +1,24 @@
-use std::pin::Pin;
+use std::{pin::Pin, sync::Arc};
 
 use futures_core::Stream;
-use pallas::interop::utxorpc::spec::submit::{WaitForTxResponse, *};
+use pallas::{
+    interop::utxorpc::spec::submit::{WaitForTxResponse, *},
+    ledger::traverse::MultiEraTx,
+};
 use tonic::{Request, Response, Status};
+use tracing::error;
 
-pub struct SubmitServiceImpl {}
+use crate::storage::{sqlite::SqliteTransaction, Transaction};
+
+pub struct SubmitServiceImpl {
+    tx_storage: Arc<SqliteTransaction>,
+}
+
+impl SubmitServiceImpl {
+    pub fn new(tx_storage: Arc<SqliteTransaction>) -> Self {
+        Self { tx_storage }
+    }
+}
 
 #[async_trait::async_trait]
 impl submit_service_server::SubmitService for SubmitServiceImpl {
@@ -16,9 +30,36 @@ impl submit_service_server::SubmitService for SubmitServiceImpl {
 
     async fn submit_tx(
         &self,
-        _request: Request<SubmitTxRequest>,
+        request: Request<SubmitTxRequest>,
     ) -> Result<Response<SubmitTxResponse>, Status> {
-        todo!()
+        let message = request.into_inner();
+
+        // TODO: validate a better structure to have this code.
+
+        let mut txs: Vec<Transaction> = Vec::default();
+        let mut hashes = vec![];
+
+        for (idx, tx_bytes) in message.tx.into_iter().flat_map(|x| x.r#type).enumerate() {
+            match tx_bytes {
+                any_chain_tx::Type::Raw(bytes) => {
+                    let tx = MultiEraTx::decode(&bytes).map_err(|error| {
+                        error!(?error);
+                        Status::failed_precondition(format!("invalid tx at index {idx}"))
+                    })?;
+                    let hash = tx.hash();
+
+                    hashes.push(hash.to_vec().into());
+                    txs.push(Transaction::new(hash.to_string(), bytes.to_vec()))
+                }
+            }
+        }
+
+        self.tx_storage.create(&txs).await.map_err(|error| {
+            error!(?error);
+            Status::internal("internal error")
+        })?;
+
+        Ok(Response::new(SubmitTxResponse { r#ref: hashes }))
     }
 
     async fn wait_for_tx(
