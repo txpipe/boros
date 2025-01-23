@@ -2,5 +2,5 @@
 db_path = "dev.db"
 
 [server]
-addr="[::1]:50052"
+listen_address="[::1]:50052"
 
