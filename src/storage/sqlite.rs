@@ -1,6 +1,7 @@
+use std::{path::Path, sync::Arc};
+
 use anyhow::Result;
 use sqlx::{sqlite::SqliteRow, FromRow, Row};
-use std::{path::Path, sync::Arc};
 
 use super::TransactionStorage;
 

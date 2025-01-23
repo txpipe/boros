@@ -1,7 +1,8 @@
+use std::net::SocketAddr;
+
 use anyhow::Result;
 use pallas::interop::utxorpc::spec as u5c;
 use serde::Deserialize;
-use std::net::SocketAddr;
 use tonic::transport::Server;
 use tracing::{error, info};
 

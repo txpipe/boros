@@ -1,6 +1,7 @@
+use std::pin::Pin;
+
 use futures_core::Stream;
 use pallas::interop::utxorpc::spec::submit::{WaitForTxResponse, *};
-use std::pin::Pin;
 use tonic::{Request, Response, Status};
 
 pub struct SubmitServiceImpl {}
