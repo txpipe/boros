@@ -15,7 +15,7 @@ pub struct Transaction {
     pub raw: Vec<u8>,
     pub status: TransactionStatus,
     pub priority: TransactionPriority,
-    pub dependences: Option<Vec<String>>,
+    pub dependencies: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -26,7 +26,7 @@ impl Transaction {
             raw,
             status: TransactionStatus::Pending,
             priority: TransactionPriority::Low,
-            dependences: None,
+            dependencies: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -96,7 +96,7 @@ mod tests {
                 raw: "hex".into(),
                 status: TransactionStatus::Pending,
                 priority: TransactionPriority::Low,
-                dependences: None,
+                dependencies: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             }

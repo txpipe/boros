@@ -53,7 +53,7 @@ impl FromRow<'_, SqliteRow> for Transaction {
                 .try_into()
                 .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
 
-            dependences: None,
+            dependencies: None,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
@@ -98,8 +98,8 @@ impl SqliteTransaction {
             .execute(&mut *db_tx)
             .await?;
 
-            if let Some(dependences) = &tx.dependences {
-                for required_id in dependences {
+            if let Some(dependencies) = &tx.dependencies {
+                for required_id in dependencies {
                     sqlx::query!(
                         r#"
                             INSERT INTO tx_dependence (
@@ -143,25 +143,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_should_create_tx_with_dependence() {
+    async fn it_should_create_tx_with_dependencies() {
         let storage = mock_sqlite().await;
         let mut transaction_1 = Transaction::default();
         transaction_1.id = "hex1".into();
 
         let mut transaction_2 = Transaction::default();
         transaction_2.id = "hex2".into();
-        transaction_2.dependences = Some(vec![transaction_1.id.clone()]);
+        transaction_2.dependencies = Some(vec![transaction_1.id.clone()]);
 
         let result = storage.create(&vec![transaction_1, transaction_2]).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn it_should_fail_create_tx_with_invalid_dependence() {
+    async fn it_should_fail_create_tx_with_invalid_dependencies() {
         let storage = mock_sqlite().await;
 
         let mut transaction = Transaction::default();
-        transaction.dependences = Some(vec!["something".into()]);
+        transaction.dependencies = Some(vec!["something".into()]);
 
         let result = storage.create(&vec![transaction]).await;
         assert!(result.is_err());
