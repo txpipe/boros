@@ -1,7 +1,9 @@
-use std::{env, error::Error};
+use std::{env, error::Error, path, sync::Arc};
 
 use anyhow::Result;
+use dotenv::dotenv;
 use serde::Deserialize;
+use storage::sqlite::{SqliteStorage, SqliteTransaction};
 use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -12,6 +14,8 @@ mod storage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenv().ok();
+
     let env_filter = EnvFilter::builder()
         .with_default_directive(Level::INFO.into())
         .with_env_var("RUST_LOG")
@@ -22,7 +26,12 @@ async fn main() -> Result<()> {
         .with(env_filter)
         .init();
 
-    let _config = Config::new().expect("invalid config file");
+    let config = Config::new().expect("invalid config file");
+
+    let storage = Arc::new(SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?);
+    storage.migrate().await?;
+
+    let _tx_storage = SqliteTransaction::new(storage.clone());
 
     let pipeline = pipeline::run();
     let server = server::run();
@@ -33,7 +42,15 @@ async fn main() -> Result<()> {
 }
 
 #[derive(Deserialize)]
-struct Config {}
+struct ConfigStorage {
+    db_path: String,
+}
+
+#[derive(Deserialize)]
+struct Config {
+    storage: ConfigStorage,
+}
+
 impl Config {
     pub fn new() -> Result<Self, Box<dyn Error>> {
         let config = config::Config::builder()

@@ -16,6 +16,7 @@ anyhow = "1.0.95"
 async-trait = "0.1.85"
 chrono = "0.4.39"
 config = { version = "0.15.4", features = ["toml"] }
+dotenv = "0.15.0"
 futures-core = "0.3.31"
 gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["derive"] }
 pallas = "0.32.0"
