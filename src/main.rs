@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     let _tx_storage = SqliteTransaction::new(storage.clone());
 
     let pipeline = pipeline::run();
-    let server = server::run();
+    let server = server::run(config.server);
 
     try_join!(pipeline, server)?;
 
@@ -42,13 +42,9 @@ async fn main() -> Result<()> {
 }
 
 #[derive(Deserialize)]
-struct ConfigStorage {
-    db_path: String,
-}
-
-#[derive(Deserialize)]
 struct Config {
-    storage: ConfigStorage,
+    server: server::Config,
+    storage: storage::Config,
 }
 
 impl Config {

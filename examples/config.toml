@@ -1,3 +1,6 @@
 [storage]
 db_path = "dev.db"
 
+[server]
+addr="0.0.0.0:5000"
+

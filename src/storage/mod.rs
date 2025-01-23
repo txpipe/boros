@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
 
 pub mod sqlite;
 
@@ -16,6 +17,11 @@ pub struct TransactionStorage {
     pub dependences: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct Config {
+    pub db_path: String,
 }
 
 #[cfg(test)]

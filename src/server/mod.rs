@@ -1,13 +1,14 @@
 use anyhow::Result;
 use pallas::interop::utxorpc::spec as u5c;
-use std::{net::SocketAddr, str::FromStr};
+use serde::Deserialize;
+use std::net::SocketAddr;
 use tonic::transport::Server;
 use tracing::{error, info};
 
 mod utxorpc;
 
-pub async fn run() -> Result<()> {
-    tokio::spawn(async {
+pub async fn run(config: Config) -> Result<()> {
+    tokio::spawn(async move {
         let submit_service = utxorpc::SubmitServiceImpl {};
         let submit_service =
             u5c::submit::submit_service_server::SubmitServiceServer::new(submit_service);
@@ -20,19 +21,12 @@ pub async fn run() -> Result<()> {
 
         let mut server = Server::builder().accept_http1(true);
 
-        let address = "0.0.0.0:5000";
-        info!(address, "GRPC server running");
-
-        let result = SocketAddr::from_str(address);
-        if let Err(error) = result {
-            error!(?error);
-            std::process::exit(1);
-        }
+        info!(address = config.addr.to_string(), "GRPC server running");
 
         let result = server
             .add_service(reflection)
             .add_service(submit_service)
-            .serve(result.unwrap())
+            .serve(config.addr)
             .await;
 
         if let Err(error) = result {
@@ -42,4 +36,9 @@ pub async fn run() -> Result<()> {
     });
 
     Ok(())
+}
+
+#[derive(Deserialize)]
+pub struct Config {
+    pub addr: SocketAddr,
 }
