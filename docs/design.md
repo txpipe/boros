@@ -4,6 +4,8 @@ Boros runs two threads, where one is the pipeline to process the states of trans
 
 Take a look at the [architectural decision record](./adrs)
 
+## Sequence Flow
+
 Sequence diagram to describe how Boros process the requests and the state of the transactions. 
 
 ```mermaid
@@ -57,4 +59,27 @@ sequenceDiagram
             grpc-->>-client: event
         end
     end
+```
+
+## Schema
+
+As Boros allows one transaction just be executed after another transaction, the schema supports transaction dependencies.
+
+```mermaid
+erDiagram
+    tx {
+        TEXT id PK
+        BLOB raw
+        TEXT status
+        INTEGER priority
+        DATETIME created_at
+        DATETIME updated_at
+    }
+    
+    tx_dependence {
+        TEXT dependent_id PK
+        TEXT required_id PK
+    }
+    
+    tx ||--o{ tx_dependence : "One tx can have N other dependencies"
 ```
