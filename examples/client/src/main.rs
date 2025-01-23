@@ -1,5 +1,5 @@
-use pallas::interop::utxorpc::spec::submit::{self, any_chain_tx::Type, AnyChainTx};
 use tonic::transport::{Channel, Uri};
+use utxorpc::spec::submit;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,8 +13,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = hex::decode(tx)?;
 
     let request = tonic::Request::new(submit::SubmitTxRequest {
-        tx: vec![AnyChainTx {
-            r#type: Some(Type::Raw(bytes.into())),
+        tx: vec![submit::AnyChainTx {
+            r#type: Some(submit::any_chain_tx::Type::Raw(bytes.into())),
         }],
     });
 
