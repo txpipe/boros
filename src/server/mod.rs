@@ -12,7 +12,9 @@ pub async fn run(config: Config) -> Result<()> {
     tokio::spawn(async move {
         let reflection = tonic_reflection::server::Builder::configure()
             .register_encoded_file_descriptor_set(u5c::submit::FILE_DESCRIPTOR_SET)
-            .build_v1()
+            .register_encoded_file_descriptor_set(u5c::cardano::FILE_DESCRIPTOR_SET)
+            .register_encoded_file_descriptor_set(protoc_wkt::google::protobuf::FILE_DESCRIPTOR_SET)
+            .build_v1alpha()
             .unwrap();
 
         let submit_service = utxorpc::SubmitServiceImpl {};

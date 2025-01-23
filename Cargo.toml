@@ -20,6 +20,7 @@ dotenv = "0.15.0"
 futures-core = "0.3.31"
 gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["derive"] }
 pallas = "0.32.0"
+protoc-wkt = "1.0.0"
 serde = { version = "1.0.217", features = ["derive"] }
 sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
 tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
