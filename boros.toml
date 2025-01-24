@@ -1,0 +1,18 @@
+[submission.source]
+type = "Http"
+addr = "0.0.0.0:5000"
+
+[monitor]
+type = "Webhook"
+url = "https://648c73ef8620b8bae7eceea9.mockapi.io/transactions"
+
+[chain.source]
+type = "N2N"
+peer = "test"
+
+[peer_manager]
+peers = [
+    "preview-node.play.dev.cardano.org:3001",
+    "adaboy-preview-1c.gleeze.com:5000",
+    "testicles.kiwipool.org:9720"
+]

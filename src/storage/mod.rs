@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 pub mod sqlite;
+pub mod in_memory_db;
 
 #[derive(Deserialize)]
 pub struct Config {
