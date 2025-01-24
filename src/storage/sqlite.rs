@@ -1,8 +1,9 @@
-use anyhow::Result;
-use sqlx::{sqlite::SqliteRow, FromRow, Row};
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
-use super::TransactionStorage;
+use anyhow::{Error, Result};
+use sqlx::{sqlite::SqliteRow, FromRow, Row};
+
+use super::Transaction;
 
 pub struct SqliteStorage {
     db: sqlx::sqlite::SqlitePool,
@@ -37,14 +38,22 @@ impl SqliteStorage {
     }
 }
 
-impl FromRow<'_, SqliteRow> for TransactionStorage {
+impl FromRow<'_, SqliteRow> for Transaction {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        let status: &str = row.try_get("status")?;
+        let priority: u32 = row.try_get("priority")?;
+
         Ok(Self {
             id: row.try_get("id")?,
             raw: row.try_get("raw")?,
-            status: row.try_get("status")?,
-            priority: row.try_get("priority")?,
-            dependences: None,
+            status: status
+                .parse()
+                .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
+            priority: priority
+                .try_into()
+                .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
+
+            dependencies: None,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
         })
@@ -52,18 +61,21 @@ impl FromRow<'_, SqliteRow> for TransactionStorage {
 }
 
 pub struct SqliteTransaction {
-    sqlite: Arc<SqliteStorage>,
+    sqlite: SqliteStorage,
 }
 
 impl SqliteTransaction {
-    pub fn new(sqlite: Arc<SqliteStorage>) -> Self {
+    pub fn new(sqlite: SqliteStorage) -> Self {
         Self { sqlite }
     }
 
-    async fn create(&self, txs: &Vec<TransactionStorage>) -> Result<()> {
+    pub async fn create(&self, txs: &Vec<Transaction>) -> Result<()> {
         let mut db_tx = self.sqlite.db.begin().await?;
 
         for tx in txs {
+            let status = tx.status.clone().to_string();
+            let priority: u32 = tx.priority.clone().try_into()?;
+
             sqlx::query!(
                 r#"
                     INSERT INTO tx (
@@ -78,16 +90,16 @@ impl SqliteTransaction {
                 "#,
                 tx.id,
                 tx.raw,
-                tx.status,
-                tx.priority,
+                status,
+                priority,
                 tx.created_at,
                 tx.updated_at
             )
             .execute(&mut *db_tx)
             .await?;
 
-            if let Some(dependences) = &tx.dependences {
-                for required_id in dependences {
+            if let Some(dependencies) = &tx.dependencies {
+                for required_id in dependencies {
                     sqlx::query!(
                         r#"
                             INSERT INTO tx_dependence (
@@ -112,46 +124,44 @@ impl SqliteTransaction {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use crate::storage::TransactionStorage;
+    use crate::storage::Transaction;
 
     use super::{SqliteStorage, SqliteTransaction};
 
     async fn mock_sqlite() -> SqliteTransaction {
-        let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
+        let sqlite_storage = SqliteStorage::ephemeral().await.unwrap();
         SqliteTransaction::new(sqlite_storage)
     }
 
     #[tokio::test]
     async fn it_should_create_tx() {
         let storage = mock_sqlite().await;
-        let transaction = TransactionStorage::default();
+        let transaction = Transaction::default();
 
         let result = storage.create(&vec![transaction]).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn it_should_create_tx_with_dependence() {
+    async fn it_should_create_tx_with_dependencies() {
         let storage = mock_sqlite().await;
-        let mut transaction_1 = TransactionStorage::default();
+        let mut transaction_1 = Transaction::default();
         transaction_1.id = "hex1".into();
 
-        let mut transaction_2 = TransactionStorage::default();
+        let mut transaction_2 = Transaction::default();
         transaction_2.id = "hex2".into();
-        transaction_2.dependences = Some(vec![transaction_1.id.clone()]);
+        transaction_2.dependencies = Some(vec![transaction_1.id.clone()]);
 
         let result = storage.create(&vec![transaction_1, transaction_2]).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
-    async fn it_should_fail_create_tx_with_invalid_dependence() {
+    async fn it_should_fail_create_tx_with_invalid_dependencies() {
         let storage = mock_sqlite().await;
 
-        let mut transaction = TransactionStorage::default();
-        transaction.dependences = Some(vec!["something".into()]);
+        let mut transaction = Transaction::default();
+        transaction.dependencies = Some(vec!["something".into()]);
 
         let result = storage.create(&vec![transaction]).await;
         assert!(result.is_err());

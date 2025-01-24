@@ -1,0 +1,85 @@
+## Architectural design
+
+Boros runs two threads, where one is the pipeline to process the states of transactions, and the other one is the GRPC server to receive requests. The GRPC makes a basic validation only to check if the transactions are valid and save them as pending in the DB. Each stage in the pipeline consumes the transactions in the DB based on the status of the transaction, so if the Boros process shuts down, it can be started again without losing the state. Furthermore, the pipeline has a policy of attempts, so if there's an error, the stage is retried based on the policy.
+
+Take a look at the [architectural decision record](./adrs)
+
+## Sequence Flow
+
+Sequence diagram to describe how Boros process the requests and the state of the transactions. 
+
+```mermaid
+sequenceDiagram
+    box Client Side
+        participant client as GRPC Client
+    end
+
+    participant grpc as GRPC
+    participant ingest as Ingest Stage
+    participant fanout as Fanout Stage
+    participant db as SQLite
+    participant dolos as Dolos
+
+    client->>+grpc: send raw tx
+    par Persist in flight 
+        grpc->>+db: persist tx in flight db
+        db-->>-grpc: ok
+        grpc-->>client: accepted
+    and Process in flight txs
+        par Ingest stage
+            ingest->>+db: fetch next pending tx
+            db-->>-ingest: next tx
+
+            alt Tx sign enabled
+                Note over ingest: need to be discussed
+                ingest->>+ingest: sign tx
+                opt Invalid tx sign
+                    ingest-->>-grpc: grpc watcher (invalid sign)
+                    grpc-->>client: event
+                end
+            end
+
+            Note over ingest,dolos: UtxoRPC is used to fetch utxos to validate the tx
+            ingest->>+dolos: fetch utxos
+            dolos-->>-ingest: utxos
+            ingest->>+ingest: validate tx
+            opt Invalid tx
+                ingest->>-grpc: grpc watcher (invalid tx)
+                grpc-->>client: event
+            end
+
+            ingest->>+db: update tx to ready
+            db-->>-ingest: ok
+        and Fanout stage
+            fanout->>+db: fetch next ready tx
+            db-->>-fanout: next tx
+
+            fanout->>+fanout: send tx mechanism
+            fanout-->>-grpc: grpc watcher (tx submitted)
+            grpc-->>-client: event
+        end
+    end
+```
+
+## Schema
+
+As Boros allows one transaction just be executed after another transaction, the schema supports transaction dependencies.
+
+```mermaid
+erDiagram
+    tx {
+        TEXT id PK
+        BLOB raw
+        TEXT status
+        INTEGER priority
+        DATETIME created_at
+        DATETIME updated_at
+    }
+    
+    tx_dependence {
+        TEXT dependent_id PK
+        TEXT required_id PK
+    }
+    
+    tx ||--o{ tx_dependence : "One tx can have N other dependencies"
+```

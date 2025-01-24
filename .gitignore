@@ -11,3 +11,5 @@ Cargo.lock
 
 dev.db*
 .env*
+
+boros.config.toml

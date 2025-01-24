@@ -1,0 +1,11 @@
+[storage]
+db_path = "dev.db"
+
+[server]
+listen_address="[::1]:50052"
+
+[peer_manager]
+peers = [
+    "Node:3001",
+    "Node:3001",
+]
