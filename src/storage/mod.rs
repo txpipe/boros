@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 
 pub mod sqlite;
+pub mod in_memory_db;
 
 pub enum TransactionPriority {
     LOW,
