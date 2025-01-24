@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE\n                \ttx\n                SET\n                \traw = $1,\n                \tstatus = $2,\n                \tupdated_at = $3\n                WHERE\n                \tid = $4;\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "c9c7d7b7a68ae840a5d5127c5cb3be43b7aad302f1a42cd462915fd7b0a26105"
+}
