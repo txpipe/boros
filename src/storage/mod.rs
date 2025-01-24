@@ -6,7 +6,7 @@ use serde::Deserialize;
 pub mod sqlite;
 pub mod in_memory_db;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Config {
     pub db_path: String,
 }

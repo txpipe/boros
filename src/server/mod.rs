@@ -40,7 +40,7 @@ pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<(
     Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Config {
     pub listen_address: SocketAddr,
 }

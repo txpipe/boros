@@ -1,4 +1,3 @@
-use futures_util::StreamExt;
 use itertools::Itertools;
 use pallas::{
     crypto::hash::Hash,
