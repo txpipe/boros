@@ -3,7 +3,6 @@ use std::{fmt::Display, str::FromStr};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-pub mod in_memory_db;
 pub mod sqlite;
 
 #[derive(Deserialize, Clone)]
@@ -11,6 +10,7 @@ pub struct Config {
     pub db_path: String,
 }
 
+#[derive(Clone)]
 pub struct Transaction {
     pub id: String,
     pub raw: Vec<u8>,
@@ -68,6 +68,7 @@ impl TryFrom<TransactionPriority> for u32 {
 pub enum TransactionStatus {
     Pending,
     Validated,
+    InFlight,
 }
 impl FromStr for TransactionStatus {
     type Err = anyhow::Error;
@@ -76,6 +77,7 @@ impl FromStr for TransactionStatus {
         match s {
             "pending" => Ok(Self::Pending),
             "validated" => Ok(Self::Validated),
+            "inflight" => Ok(Self::InFlight),
             _ => Err(anyhow::Error::msg("transaction status not supported")),
         }
     }
@@ -85,6 +87,7 @@ impl Display for TransactionStatus {
         match self {
             Self::Pending => write!(f, "pending"),
             Self::Validated => write!(f, "validated"),
+            Self::InFlight => write!(f, "inflight"),
         }
     }
 }

@@ -32,9 +32,8 @@ async fn main() -> Result<()> {
     storage.migrate().await?;
 
     let tx_storage = Arc::new(SqliteTransaction::new(storage));
-    let cbor_txs_db = storage::in_memory_db::CborTransactionsDb::new();
 
-    let pipeline = pipeline::run(cbor_txs_db.clone(), config.clone());
+    let pipeline = pipeline::run(tx_storage.clone(), config.clone());
     let server = server::run(config.server, tx_storage.clone());
 
     try_join!(pipeline, server)?;
@@ -43,15 +42,10 @@ async fn main() -> Result<()> {
 }
 
 #[derive(Deserialize, Clone)]
-struct PeerManagerConfig {
-    peers: Vec<String>,
-}
-
-#[derive(Deserialize, Clone)]
 struct Config {
     server: server::Config,
     storage: storage::Config,
-    peer_manager: PeerManagerConfig,
+    peer_manager: pipeline::fanout::PeerManagerConfig,
 }
 
 impl Config {

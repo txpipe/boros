@@ -1,20 +1,17 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 
-use crate::{storage::in_memory_db::CborTransactionsDb, Config};
+use crate::{storage::sqlite::SqliteTransaction, Config};
 
 pub mod fanout;
 pub mod ingest;
 pub mod monitor;
 
-#[derive(Debug)]
-pub struct Transaction {
-    pub cbor: Vec<u8>,
-}
-
-pub async fn run(cbor_txs_db: CborTransactionsDb, config: Config) -> Result<()> {
-    tokio::spawn(async {
-        let ingest = ingest::Stage {};
-        let fanout = fanout::Stage::new(cbor_txs_db, config);
+pub async fn run(tx_storage: Arc<SqliteTransaction>, config: Config) -> Result<()> {
+    tokio::spawn(async move {
+        let ingest = ingest::Stage::new(tx_storage.clone());
+        let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
         let monitor = monitor::Stage {};
 
         let policy: gasket::runtime::Policy = Default::default();

@@ -122,7 +122,7 @@ impl SqliteTransaction {
         Ok(())
     }
 
-    async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
+    pub async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
         let transaction = sqlx::query_as::<_, Transaction>(
             r#"
                     SELECT
@@ -149,7 +149,7 @@ impl SqliteTransaction {
         Ok(transaction)
     }
 
-    async fn update(&self, tx: &Transaction) -> Result<()> {
+    pub async fn update(&self, tx: &Transaction) -> Result<()> {
         let status = tx.status.to_string();
         let updated_at = Utc::now();
 
