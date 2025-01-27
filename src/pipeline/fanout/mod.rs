@@ -26,6 +26,8 @@ mod tests {
             peer_manager: PeerManagerConfig {
                 peers: vec!["".to_string()],
             },
+            server: todo!(),
+            storage: todo!(),
         };
         
         // Run mock node

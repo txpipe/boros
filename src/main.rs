@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct PeerManagerConfig {
     peers: Vec<String>,
 }
