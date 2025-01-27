@@ -9,9 +9,9 @@ use tx_submit_peer_manager::TxSubmitPeerManager;
 use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
 
 pub mod mempool;
+pub mod mock_ouroboros_tx_submit_server;
 pub mod tx_submit_peer;
 pub mod tx_submit_peer_manager;
-pub mod mock_ouroboros_tx_submit_server;
 
 #[derive(Stage)]
 #[stage(name = "fanout", unit = "Transaction", worker = "Worker")]
@@ -97,30 +97,15 @@ mod tests {
     use pallas::ledger::traverse::MultiEraTx;
 
     use super::*;
-<<<<<<< HEAD
-    use crate::storage::sqlite::{SqliteStorage, SqliteTransaction};
-    use std::sync::Arc;
-    use std::vec;
-
-    #[tokio::test]
-    async fn test_fanout_stage() {
-        let sqlite_storage = SqliteStorage::ephemeral().await.unwrap();
-        let tx_storage = Arc::new(SqliteTransaction::new(sqlite_storage));
-
-        let config = PeerManagerConfig {
-            peers: vec!["".to_string()],
-        };
-        // Run mock node
-
-        // Run Fanout Stage
-        let _fanout = Stage::new(tx_storage.clone(), config);
-=======
 
     #[tokio::test]
     async fn test_fanout_stage() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
 
-        let peer_server = Arc::new(MockOuroborosTxSubmitPeerServer::new("0.0.0.0:3001".to_string(), 2));
+        let peer_server = Arc::new(MockOuroborosTxSubmitPeerServer::new(
+            "0.0.0.0:3001".to_string(),
+            2,
+        ));
         peer_server.clone().init().await;
 
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -146,10 +131,10 @@ mod tests {
         let tx_id = tx.hash();
 
         tracing::info!("Tx Hash: {:?}", tx_id);
-        
+
         // There is a deadlock here, need to debug
         tx_submit_peer_client.add_tx(raw_cbor.clone()).await;
-        
+
         // wait for server to stop
         loop {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -165,13 +150,16 @@ mod tests {
         let mut found = false;
 
         for tx_from_server in server_acknowledge_txs.iter() {
-            tracing::info!("Tx from server: {:?}, Tx from client: {:?}", tx_from_server, tx_id);
+            tracing::info!(
+                "Tx from server: {:?}, Tx from client: {:?}",
+                tx_from_server,
+                tx_id
+            );
             if tx_from_server == &tx_id {
                 found = true;
                 break;
             }
         }
         assert!(found);
->>>>>>> main
     }
 }
