@@ -32,9 +32,8 @@ async fn main() -> Result<()> {
     storage.migrate().await?;
 
     let tx_storage = Arc::new(SqliteTransaction::new(storage));
-    let cbor_txs_db = storage::in_memory_db::CborTransactionsDb::new();
 
-    let pipeline = pipeline::run(cbor_txs_db.clone(), config.clone());
+    let pipeline = pipeline::run(config.clone(), tx_storage.clone());
     let server = server::run(config.server, tx_storage.clone());
 
     try_join!(pipeline, server)?;
