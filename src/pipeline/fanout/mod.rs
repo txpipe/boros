@@ -9,7 +9,6 @@ use tx_submit_peer_manager::TxSubmitPeerManager;
 use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
 
 pub mod mempool;
-pub mod mock_ouroboros_tx_submit_server;
 pub mod tx_submit_peer;
 pub mod tx_submit_peer_manager;
 
@@ -88,6 +87,9 @@ pub struct PeerManagerConfig {
 }
 
 // Test for Fanout Stage
+#[cfg(test)]
+pub mod mock_ouroboros_tx_submit_server;
+
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};

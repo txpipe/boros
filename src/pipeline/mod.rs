@@ -8,7 +8,7 @@ pub mod fanout;
 pub mod ingest;
 pub mod monitor;
 
-pub async fn run(tx_storage: Arc<SqliteTransaction>, config: Config) -> Result<()> {
+pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<()> {
     tokio::spawn(async move {
         let ingest = ingest::Stage::new(tx_storage.clone());
         let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
