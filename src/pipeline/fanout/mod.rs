@@ -15,8 +15,6 @@ mod tests {
     use mock_ouroboros_tx_submit_server::MockOuroborosTxSubmitPeerServer;
     use pallas::ledger::traverse::MultiEraTx;
 
-    use crate::{Config, PeerManagerConfig};
-
     use super::*;
 
     #[tokio::test]
@@ -45,13 +43,6 @@ mod tests {
             }
         };
 
-        let config = Config {
-            peer_manager: PeerManagerConfig {
-                peers: vec!["".to_string()],
-            },
-            server: todo!(),
-            storage: todo!(),
-        };
         let tx = MultiEraTx::decode(&raw_cbor).unwrap();
         let tx_id = tx.hash();
 
