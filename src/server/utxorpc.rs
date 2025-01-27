@@ -6,7 +6,7 @@ use pallas::{
     ledger::traverse::MultiEraTx,
 };
 use tonic::{Request, Response, Status};
-use tracing::error;
+use tracing::{error, info};
 
 use crate::storage::{sqlite::SqliteTransaction, Transaction};
 
@@ -53,6 +53,8 @@ impl submit_service_server::SubmitService for SubmitServiceImpl {
                 }
             }
         }
+
+        info!(?hashes, "submitting txs");
 
         self.tx_storage.create(&txs).await.map_err(|error| {
             error!(?error);

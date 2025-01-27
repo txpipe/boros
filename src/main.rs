@@ -33,7 +33,11 @@ async fn main() -> Result<()> {
 
     let tx_storage = Arc::new(SqliteTransaction::new(storage));
 
+<<<<<<< HEAD
     let pipeline = pipeline::run(tx_storage.clone(), config.clone());
+=======
+    let pipeline = pipeline::run(config.clone(), tx_storage.clone());
+>>>>>>> main
     let server = server::run(config.server, tx_storage.clone());
 
     try_join!(pipeline, server)?;
