@@ -1,9 +1,10 @@
 use std::path::Path;
 
 use anyhow::{Error, Result};
+use chrono::Utc;
 use sqlx::{sqlite::SqliteRow, FromRow, Row};
 
-use super::Transaction;
+use super::{Transaction, TransactionStatus};
 
 pub struct SqliteStorage {
     db: sqlx::sqlite::SqlitePool,
@@ -120,11 +121,64 @@ impl SqliteTransaction {
         db_tx.commit().await?;
         Ok(())
     }
+
+    pub async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
+        let transaction = sqlx::query_as::<_, Transaction>(
+            r#"
+                    SELECT
+                    	id,
+                    	raw,
+                    	status,
+                    	priority,
+                    	created_at,
+                    	updated_at
+                    FROM
+                    	tx
+                    WHERE
+                    	tx.status = $1
+                    ORDER BY
+                    	priority,
+                    	created_at ASC
+                    LIMIT 1;
+            "#,
+        )
+        .bind(status.to_string())
+        .fetch_optional(&self.sqlite.db)
+        .await?;
+
+        Ok(transaction)
+    }
+
+    pub async fn update(&self, tx: &Transaction) -> Result<()> {
+        let status = tx.status.to_string();
+        let updated_at = Utc::now();
+
+        sqlx::query!(
+            r#"
+                UPDATE
+                	tx
+                SET
+                	raw = $1,
+                	status = $2,
+                	updated_at = $3
+                WHERE
+                	id = $4;
+            "#,
+            tx.raw,
+            status,
+            updated_at,
+            tx.id,
+        )
+        .execute(&self.sqlite.db)
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::storage::Transaction;
+    use crate::storage::{Transaction, TransactionStatus};
 
     use super::{SqliteStorage, SqliteTransaction};
 
@@ -165,5 +219,34 @@ mod tests {
 
         let result = storage.create(&vec![transaction]).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn it_should_find_next_transaction() {
+        let storage = mock_sqlite().await;
+        let transaction = Transaction::default();
+
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let result = storage.next(TransactionStatus::Pending).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn it_should_update_transaction_valid() {
+        let storage = mock_sqlite().await;
+
+        let transaction = Transaction::default();
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let mut transaction = Transaction::default();
+        transaction.status = TransactionStatus::Validated;
+        let result = storage.update(&transaction).await;
+        assert!(result.is_ok());
+
+        let result = storage.next(TransactionStatus::Validated).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
     }
 }

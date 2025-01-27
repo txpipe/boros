@@ -4,13 +4,13 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 pub mod sqlite;
-pub mod in_memory_db;
 
 #[derive(Deserialize, Clone)]
 pub struct Config {
     pub db_path: String,
 }
 
+#[derive(Clone)]
 pub struct Transaction {
     pub id: String,
     pub raw: Vec<u8>,
@@ -45,9 +45,9 @@ impl TryFrom<u32> for TransactionPriority {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
-            1 => Ok(Self::Low),
+            1 => Ok(Self::High),
             2 => Ok(Self::Medium),
-            3 => Ok(Self::High),
+            3 => Ok(Self::Low),
             _ => Err(anyhow::Error::msg("transaction priority not supported")),
         }
     }
@@ -57,9 +57,9 @@ impl TryFrom<TransactionPriority> for u32 {
 
     fn try_from(value: TransactionPriority) -> Result<Self, Self::Error> {
         match value {
-            TransactionPriority::Low => Ok(1),
+            TransactionPriority::High => Ok(1),
             TransactionPriority::Medium => Ok(2),
-            TransactionPriority::High => Ok(3),
+            TransactionPriority::Low => Ok(3),
         }
     }
 }
@@ -67,6 +67,8 @@ impl TryFrom<TransactionPriority> for u32 {
 #[derive(Clone)]
 pub enum TransactionStatus {
     Pending,
+    Validated,
+    InFlight,
 }
 impl FromStr for TransactionStatus {
     type Err = anyhow::Error;
@@ -74,6 +76,8 @@ impl FromStr for TransactionStatus {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "pending" => Ok(Self::Pending),
+            "validated" => Ok(Self::Validated),
+            "inflight" => Ok(Self::InFlight),
             _ => Err(anyhow::Error::msg("transaction status not supported")),
         }
     }
@@ -82,6 +86,8 @@ impl Display for TransactionStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Pending => write!(f, "pending"),
+            Self::Validated => write!(f, "validated"),
+            Self::InFlight => write!(f, "inflight"),
         }
     }
 }

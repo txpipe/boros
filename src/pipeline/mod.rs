@@ -8,15 +8,10 @@ pub mod fanout;
 pub mod ingest;
 pub mod monitor;
 
-#[derive(Debug)]
-pub struct Transaction {
-    pub cbor: Vec<u8>,
-}
-
 pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<()> {
     tokio::spawn(async move {
-        let ingest = ingest::Stage {};
-        let fanout = fanout::Stage::new(config, tx_storage);
+        let ingest = ingest::Stage::new(tx_storage.clone());
+        let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
         let monitor = monitor::Stage {};
 
         let policy: gasket::runtime::Policy = Default::default();

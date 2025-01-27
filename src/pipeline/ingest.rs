@@ -1,14 +1,22 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
 use tokio::time::sleep;
 use tracing::info;
 
-use super::Transaction;
+use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
 
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Transaction", worker = "Worker")]
-pub struct Stage {}
+pub struct Stage {
+    storage: Arc<SqliteTransaction>,
+}
+
+impl Stage {
+    pub fn new(storage: Arc<SqliteTransaction>) -> Self {
+        Self { storage }
+    }
+}
 
 pub struct Worker;
 
@@ -20,22 +28,29 @@ impl gasket::framework::Worker<Stage> for Worker {
 
     async fn schedule(
         &mut self,
-        _stage: &mut Stage,
+        stage: &mut Stage,
     ) -> Result<WorkSchedule<Transaction>, WorkerError> {
-        // TODO: fetch data from db
-        sleep(Duration::from_secs(30)).await;
-        Ok(WorkSchedule::Unit(Transaction {
-            cbor: vec![0, 1, 2, 3],
-        }))
+        if let Some(tx) = stage
+            .storage
+            .next(TransactionStatus::Pending)
+            .await
+            .or_retry()?
+        {
+            return Ok(WorkSchedule::Unit(tx));
+        }
+
+        sleep(Duration::from_secs(1)).await;
+        Ok(WorkSchedule::Idle)
     }
 
-    async fn execute(
-        &mut self,
-        _unit: &Transaction,
-        _stage: &mut Stage,
-    ) -> Result<(), WorkerError> {
-        info!("ingest");
-        
+    async fn execute(&mut self, unit: &Transaction, stage: &mut Stage) -> Result<(), WorkerError> {
+        let mut transaction = unit.clone();
+
+        info!("ingest {}", transaction.id);
+
+        transaction.status = TransactionStatus::Validated;
+        stage.storage.update(&transaction).await.or_retry()?;
+
         Ok(())
     }
 }

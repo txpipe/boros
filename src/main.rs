@@ -42,15 +42,10 @@ async fn main() -> Result<()> {
 }
 
 #[derive(Deserialize, Clone)]
-struct PeerManagerConfig {
-    peers: Vec<String>,
-}
-
-#[derive(Deserialize, Clone)]
 struct Config {
     server: server::Config,
     storage: storage::Config,
-    peer_manager: PeerManagerConfig,
+    peer_manager: pipeline::fanout::PeerManagerConfig,
 }
 
 impl Config {

@@ -1,12 +1,95 @@
+use std::{sync::Arc, time::Duration};
+
+use gasket::framework::*;
+use serde::Deserialize;
+use tokio::time::sleep;
+use tracing::info;
+use tx_submit_peer_manager::TxSubmitPeerManager;
+
+use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
+
 pub mod mempool;
-pub mod stage;
 pub mod tx_submit_peer;
 pub mod tx_submit_peer_manager;
-pub mod mock_ouroboros_tx_submit_server;
 
-pub use stage::Stage;
+#[derive(Stage)]
+#[stage(name = "fanout", unit = "Transaction", worker = "Worker")]
+pub struct Stage {
+    storage: Arc<SqliteTransaction>,
+    config: PeerManagerConfig,
+}
+
+impl Stage {
+    pub fn new(storage: Arc<SqliteTransaction>, config: PeerManagerConfig) -> Self {
+        Self { storage, config }
+    }
+}
+
+pub struct Worker {
+    tx_submit_peer_manager: TxSubmitPeerManager,
+}
+
+#[async_trait::async_trait(?Send)]
+impl gasket::framework::Worker<Stage> for Worker {
+    async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
+        // Load configuration and Start Clients
+        let peer_addresses = stage.config.peers.clone();
+
+        info!("Peer Addresses: {:?}", peer_addresses);
+
+        // Proof of Concept: TxSubmitPeerManager
+        // Pass Config Network Magic and Peer Addresses
+        let mut tx_submit_peer_manager = TxSubmitPeerManager::new(2, peer_addresses);
+        tx_submit_peer_manager.init().await.unwrap();
+
+        Ok(Self {
+            tx_submit_peer_manager,
+        })
+    }
+
+    async fn schedule(
+        &mut self,
+        stage: &mut Stage,
+    ) -> Result<WorkSchedule<Transaction>, WorkerError> {
+        if let Some(tx) = stage
+            .storage
+            .next(TransactionStatus::Validated)
+            .await
+            .or_retry()?
+        {
+            return Ok(WorkSchedule::Unit(tx));
+        }
+
+        sleep(Duration::from_secs(1)).await;
+        Ok(WorkSchedule::Idle)
+    }
+
+    async fn execute(&mut self, unit: &Transaction, stage: &mut Stage) -> Result<(), WorkerError> {
+        let mut transaction = unit.clone();
+        info!("fanout {}", transaction.id);
+
+        // extract cbor from unit and pass it to tx_submit_peer_manager
+        // comment out for now until we have a proper tx to submit
+        self.tx_submit_peer_manager
+            .add_tx(transaction.raw.clone())
+            .await;
+
+        transaction.status = TransactionStatus::InFlight;
+        stage.storage.update(&transaction).await.or_retry()?;
+
+        Ok(())
+    }
+}
+
+#[derive(Deserialize, Clone)]
+pub struct PeerManagerConfig {
+    peers: Vec<String>,
+}
 
 // Test for Fanout Stage
+#[cfg(test)]
+pub mod mock_ouroboros_tx_submit_server;
+
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, time::Duration};
@@ -21,7 +104,10 @@ mod tests {
     async fn test_fanout_stage() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
 
-        let peer_server = Arc::new(MockOuroborosTxSubmitPeerServer::new("0.0.0.0:3001".to_string(), 2));
+        let peer_server = Arc::new(MockOuroborosTxSubmitPeerServer::new(
+            "0.0.0.0:3001".to_string(),
+            2,
+        ));
         peer_server.clone().init().await;
 
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -47,10 +133,10 @@ mod tests {
         let tx_id = tx.hash();
 
         tracing::info!("Tx Hash: {:?}", tx_id);
-        
+
         // There is a deadlock here, need to debug
         tx_submit_peer_client.add_tx(raw_cbor.clone()).await;
-        
+
         // wait for server to stop
         loop {
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -66,7 +152,11 @@ mod tests {
         let mut found = false;
 
         for tx_from_server in server_acknowledge_txs.iter() {
-            tracing::info!("Tx from server: {:?}, Tx from client: {:?}", tx_from_server, tx_id);
+            tracing::info!(
+                "Tx from server: {:?}, Tx from client: {:?}",
+                tx_from_server,
+                tx_id
+            );
             if tx_from_server == &tx_id {
                 found = true;
                 break;

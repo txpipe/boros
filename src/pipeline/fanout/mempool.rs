@@ -1,8 +1,5 @@
 use itertools::Itertools;
-use pallas::{
-    crypto::hash::Hash,
-    ledger::traverse::{MultiEraBlock, MultiEraTx},
-};
+use pallas::{crypto::hash::Hash, ledger::traverse::MultiEraTx};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -20,12 +17,6 @@ pub enum MempoolError {
 
     #[error("decode error: {0}")]
     DecodeError(#[from] pallas::codec::minicbor::decode::Error),
-
-    #[error("plutus not supported")]
-    PlutusNotSupported,
-
-    #[error("invalid tx: {0}")]
-    InvalidTx(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -42,14 +33,14 @@ pub enum TxStage {
     Pending,
     Inflight,
     Acknowledged,
-    Confirmed,
-    Unknown,
 }
 
+// TODO: validate clippy unused fields
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct Event {
-    pub new_stage: TxStage,
-    pub tx: Tx,
+    new_stage: TxStage,
+    tx: Tx,
 }
 
 #[derive(Default)]
@@ -72,10 +63,6 @@ impl Mempool {
         let (updates, _) = broadcast::channel(16);
 
         Self { mempool, updates }
-    }
-
-    pub fn subscribe(&self) -> broadcast::Receiver<Event> {
-        self.updates.subscribe()
     }
 
     pub fn notify(&self, new_stage: TxStage, tx: Tx) {
@@ -166,66 +153,8 @@ impl Mempool {
         state.inflight.iter().find(|x| x.hash.eq(tx_hash)).cloned()
     }
 
-    pub fn find_pending(&self, tx_hash: &TxHash) -> Option<Tx> {
-        let state = self.mempool.read().unwrap();
-        state.pending.iter().find(|x| x.hash.eq(tx_hash)).cloned()
-    }
-
     pub fn pending_total(&self) -> usize {
         let state = self.mempool.read().unwrap();
         state.pending.len()
-    }
-
-    pub fn check_stage(&self, tx_hash: &TxHash) -> TxStage {
-        let state = self.mempool.read().unwrap();
-
-        if let Some(tx) = state.acknowledged.get(tx_hash) {
-            if tx.confirmed {
-                TxStage::Confirmed
-            } else {
-                TxStage::Acknowledged
-            }
-        } else if self.find_inflight(tx_hash).is_some() {
-            TxStage::Inflight
-        } else if self.find_pending(tx_hash).is_some() {
-            TxStage::Pending
-        } else {
-            TxStage::Unknown
-        }
-    }
-
-    pub fn apply_block(&self, block: &MultiEraBlock) {
-        let mut state = self.mempool.write().unwrap();
-
-        if state.acknowledged.is_empty() {
-            return;
-        }
-
-        for tx in block.txs() {
-            let tx_hash = tx.hash();
-
-            if let Some(acknowledged_tx) = state.acknowledged.get_mut(&tx_hash) {
-                acknowledged_tx.confirmed = true;
-                self.notify(TxStage::Confirmed, acknowledged_tx.clone());
-                debug!(%tx_hash, "confirming tx");
-            }
-        }
-    }
-
-    pub fn undo_block(&self, block: &MultiEraBlock) {
-        let mut state = self.mempool.write().unwrap();
-
-        if state.acknowledged.is_empty() {
-            return;
-        }
-
-        for tx in block.txs() {
-            let tx_hash = tx.hash();
-
-            if let Some(acknowledged_tx) = state.acknowledged.get_mut(&tx_hash) {
-                acknowledged_tx.confirmed = false;
-                debug!(%tx_hash, "un-confirming tx");
-            }
-        }
     }
 }
