@@ -1,24 +1,24 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::{pipeline::Transaction, storage::in_memory_db::CborTransactionsDb, Config};
+use crate::{pipeline::Transaction, storage::sqlite::SqliteTransaction, Config};
 
 use super::tx_submit_peer_manager::TxSubmitPeerManager;
 
 #[derive(Stage)]
 #[stage(name = "fanout", unit = "Transaction", worker = "Worker")]
 pub struct Stage {
-    pub cbor_txs_db: CborTransactionsDb,
+    pub tx_storage:  Arc<SqliteTransaction>,
     pub config: Config,
 }
 
 impl Stage {
-    pub fn new(cbor_txs_db: CborTransactionsDb, config: Config) -> Self {
+    pub fn new(config: Config, tx_storage: Arc<SqliteTransaction>) -> Self {
         Self {
-            cbor_txs_db,
+            tx_storage,
             config,
         }
     }
@@ -50,17 +50,18 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<Transaction>, WorkerError> {
-        info!("Cbor Transactions Length: {}", stage.cbor_txs_db.cbor_txs.lock().unwrap().len());
+        // info!("Cbor Transactions Length: {}", stage.tx_storage);
         
-        if let Some(tx_cbor) = stage.cbor_txs_db.pop_tx() {
-            return Ok(WorkSchedule::Unit(Transaction {
-                cbor: tx_cbor
-            }));
-        } else {
-            // TODO: should we really have a sleep here?
-            sleep(Duration::from_secs(30)).await;
-            return Ok(WorkSchedule::Idle);
-        }
+        // if let Some(tx_cbor) = stage.cbor_txs_db.pop_tx() {
+        //     return Ok(WorkSchedule::Unit(Transaction {
+        //         cbor: tx_cbor
+        //     }));
+        // } else {
+        //     // TODO: should we really have a sleep here?
+        //     sleep(Duration::from_secs(30)).await;
+        //     return Ok(WorkSchedule::Idle);
+        // }
+        return Ok(WorkSchedule::Idle);
     }
 
     async fn execute(

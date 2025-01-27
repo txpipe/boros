@@ -13,3 +13,5 @@ dev.db*
 .env*
 
 boros.config.toml
+boros.toml
+boros.db
