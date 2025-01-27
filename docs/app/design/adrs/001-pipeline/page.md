@@ -1,3 +1,8 @@
+---
+title: Pipeline - Boros Docs
+sidebarTitle: Pipeline
+---
+
 # Decision to choose a way to have a data pipeline process
 
 **status**: draft
