@@ -267,8 +267,12 @@ impl TxSubmitPeer {
 
     /// Add a new transaction to the mempool.
     pub async fn add_tx(&self, tx: Vec<u8>) {
+        let start_await = tokio::time::Instant::now();
         let mempool = self.mempool.lock().await;
+        let elapsed = start_await.elapsed();
         mempool.receive_raw(&tx).unwrap();
+
+        info!(peer=%self.peer_addr, elapsed=?elapsed, "Successfully Added TX to mempool");
     }
 }
 

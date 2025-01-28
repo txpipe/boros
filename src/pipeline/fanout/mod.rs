@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::Duration
+};
 
 use gasket::framework::*;
 use serde::Deserialize;
