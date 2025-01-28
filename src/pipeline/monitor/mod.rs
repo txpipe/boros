@@ -1,14 +1,30 @@
-use std::time::Duration;
+use std::pin::Pin;
 
+use futures::{Stream, TryStreamExt};
 use gasket::framework::*;
-use tokio::time::sleep;
 use tracing::info;
 
-pub struct Block;
+pub mod file;
+
+#[derive(Debug)]
+pub enum Event {
+    RollForward(Vec<u8>),
+}
+
+pub trait MonitorAdapter {
+    fn stream(&mut self) -> Pin<Box<dyn Stream<Item = anyhow::Result<Event>>>>;
+}
 
 #[derive(Stage)]
-#[stage(name = "monitor", unit = "Block", worker = "Worker")]
-pub struct Stage {}
+#[stage(name = "monitor", unit = "Event", worker = "Worker")]
+pub struct Stage {
+    adapter: Box<dyn MonitorAdapter + Send>,
+}
+impl Stage {
+    pub fn new(adapter: Box<dyn MonitorAdapter + Send>) -> Self {
+        Self { adapter }
+    }
+}
 
 pub struct Worker;
 
@@ -18,14 +34,21 @@ impl gasket::framework::Worker<Stage> for Worker {
         Ok(Self)
     }
 
-    async fn schedule(&mut self, _stage: &mut Stage) -> Result<WorkSchedule<Block>, WorkerError> {
-        // TODO: fetch data from network
-        sleep(Duration::from_secs(30)).await;
-        Ok(WorkSchedule::Unit(Block {}))
+    async fn schedule(&mut self, stage: &mut Stage) -> Result<WorkSchedule<Event>, WorkerError> {
+        info!("monitor waiting next event");
+        if let Some(e) = stage.adapter.stream().try_next().await.or_restart()? {
+            return Ok(WorkSchedule::Unit(e));
+        }
+
+        Ok(WorkSchedule::Idle)
     }
 
-    async fn execute(&mut self, _unit: &Block, _stage: &mut Stage) -> Result<(), WorkerError> {
+    async fn execute(&mut self, unit: &Event, _stage: &mut Stage) -> Result<(), WorkerError> {
         info!("monitor");
+
+        match unit {
+            Event::RollForward(v) => info!("RollForward {}", hex::encode(v)),
+        };
 
         Ok(())
     }
