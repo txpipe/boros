@@ -12,7 +12,7 @@ pub enum Event {
 }
 
 pub trait MonitorAdapter {
-    fn stream(&mut self) -> Pin<Box<dyn Stream<Item = anyhow::Result<Event>>>>;
+    fn stream(&self) -> Pin<Box<dyn Stream<Item = anyhow::Result<Event>>>>;
 }
 
 #[derive(Stage)]
@@ -26,17 +26,19 @@ impl Stage {
     }
 }
 
-pub struct Worker;
+pub struct Worker {
+    stream: Pin<Box<dyn Stream<Item = anyhow::Result<Event>>>>,
+}
 
 #[async_trait::async_trait(?Send)]
 impl gasket::framework::Worker<Stage> for Worker {
-    async fn bootstrap(_stage: &Stage) -> Result<Self, WorkerError> {
-        Ok(Self)
+    async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
+        let stream = stage.adapter.stream();
+        Ok(Self { stream })
     }
 
-    async fn schedule(&mut self, stage: &mut Stage) -> Result<WorkSchedule<Event>, WorkerError> {
-        info!("monitor waiting next event");
-        if let Some(e) = stage.adapter.stream().try_next().await.or_restart()? {
+    async fn schedule(&mut self, _stage: &mut Stage) -> Result<WorkSchedule<Event>, WorkerError> {
+        if let Some(e) = self.stream.try_next().await.or_restart()? {
             return Ok(WorkSchedule::Unit(e));
         }
 

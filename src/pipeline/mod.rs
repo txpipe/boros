@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
 use monitor::file::FileMonitorAdapter;
@@ -13,7 +13,7 @@ pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<(
     let ingest = ingest::Stage::new(tx_storage.clone());
     let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
 
-    let adapter = FileMonitorAdapter::new(Path::new("test/blocks"))?;
+    let adapter = FileMonitorAdapter::try_new()?;
     let monitor = monitor::Stage::new(Box::new(adapter));
 
     let policy: gasket::runtime::Policy = Default::default();
