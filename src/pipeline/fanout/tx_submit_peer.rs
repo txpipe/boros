@@ -49,13 +49,19 @@ impl TxSubmitPeer {
             .map_err(|e| {
                 error!(error=?e, peer=%self.peer_addr, "Failed to connect to peer");
                 e
-            }).unwrap();
+            })
+            .unwrap();
 
         // 2) Initialize the txsubmission mini-protocol
-        client.txsubmission().send_init().await.map_err(|e| {
-            error!(error=?e, peer=%self.peer_addr, "Failed to send init message");
-            e
-        }).unwrap();
+        client
+            .txsubmission()
+            .send_init()
+            .await
+            .map_err(|e| {
+                error!(error=?e, peer=%self.peer_addr, "Failed to send init message");
+                e
+            })
+            .unwrap();
 
         // 3) Store it so we can spawn our background loop
         self.client = Arc::new(Mutex::new(Some(client)));
@@ -76,29 +82,6 @@ impl TxSubmitPeer {
 
         task::spawn(async move {
             loop {
-                // Separate function to handle leftover unfulfilled requests
-                async fn process_unfulfilled(
-                    mempool: &Mempool,
-                    client: &mut PeerClient,
-                    unfulfilled_request_arc: Arc<RwLock<Option<usize>>>,
-                    request: usize,
-                    peer_addr: &str,
-                ) -> Option<usize> {
-                    let available = mempool.pending_total();
-
-                    if available > 0 {
-                        info!(peer=%peer_addr, request, available, "Found enough TXs to fulfill request");
-                        reply_txs(mempool, client, unfulfilled_request_arc, 0, request, peer_addr)
-                            .await
-                            .ok();
-                        None
-                    } else {
-                        info!(peer=%peer_addr, request, available, "Not enough TXs yet; will retry");
-                        tokio::time::sleep(Duration::from_secs(10)).await;
-                        Some(request)
-                    }
-                }
-
                 // Separate function to reply with TXs
                 async fn reply_txs(
                     mempool: &Mempool,
@@ -134,25 +117,38 @@ impl TxSubmitPeer {
 
                 match outstanding_request {
                     Some(request) => {
-                        // Handle leftover request
-                        let mempool_guard = mempool_arc.lock().await;
-                        let mut client_guard = client_arc.lock().await;
-                        let client_ref = match client_guard.as_mut() {
-                            Some(c) => c,
-                            None => {
-                                warn!(peer=%peer_addr, "No client available; breaking");
-                                break;
-                            }
+                        let available = {
+                            let mempool_guard = mempool_arc.lock().await;
+                            mempool_guard.pending_total()
                         };
 
-                        process_unfulfilled(
-                            &mempool_guard,
-                            client_ref,
-                            Arc::clone(&unfulfilled_request_arc),
-                            request,
-                            &peer_addr,
-                        )
-                        .await;
+                        if available > 0 {
+                            let mempool = mempool_arc.lock().await;
+                            let mut client_guard = client_arc.lock().await;
+                            let client_ref = match client_guard.as_mut() {
+                                Some(c) => c,
+                                None => {
+                                    warn!(peer=%peer_addr, "No client available; breaking");
+                                    break;
+                                }
+                            };
+
+                            info!(peer=%peer_addr, request, available, "Found enough TXs to fulfill request");
+
+                            reply_txs(
+                                &mempool,
+                                client_ref,
+                                Arc::clone(&unfulfilled_request_arc),
+                                0,
+                                request,
+                                &peer_addr,
+                            )
+                            .await
+                            .ok();
+                        } else {
+                            info!(peer=%peer_addr, request, available, "Not enough TXs yet; will retry");
+                            tokio::time::sleep(Duration::from_secs(10)).await;
+                        }
                     }
                     None => {
                         info!(peer=%peer_addr, "Waiting for next request...");
@@ -254,7 +250,8 @@ impl TxSubmitPeer {
                                     }
                                 };
 
-                                if let Err(err) = client_ref.txsubmission().reply_txs(to_send).await {
+                                if let Err(err) = client_ref.txsubmission().reply_txs(to_send).await
+                                {
                                     error!(peer=%peer_addr, error=?err, "Error sending TXs upstream");
                                 }
                             }
@@ -289,10 +286,15 @@ async fn propagate_txs(
         .map(|x| TxIdAndSize(EraTxId(x.era, x.hash.to_vec()), x.bytes.len() as u32))
         .collect_vec();
 
-    client.txsubmission().reply_tx_ids(payload).await.map_err(|e| {
-        error!(peer=%peer_addr, error=?e, "Failed to reply with TX IDs");
-        e
-    }).unwrap();
+    client
+        .txsubmission()
+        .reply_tx_ids(payload)
+        .await
+        .map_err(|e| {
+            error!(peer=%peer_addr, error=?e, "Failed to reply with TX IDs");
+            e
+        })
+        .unwrap();
 
     Ok(())
 }
