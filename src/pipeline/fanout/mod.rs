@@ -68,8 +68,6 @@ impl gasket::framework::Worker<Stage> for Worker {
         let mut transaction = unit.clone();
         info!("fanout {}", transaction.id);
 
-        // extract cbor from unit and pass it to tx_submit_peer_manager
-        // comment out for now until we have a proper tx to submit
         self.tx_submit_peer_manager
             .add_tx(transaction.raw.clone())
             .await;
@@ -101,7 +99,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_fanout_stage() {
+    async fn it_should_fanout_stage() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
 
         let peer_server = Arc::new(MockOuroborosTxSubmitPeerServer::new(

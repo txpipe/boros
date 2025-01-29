@@ -11,6 +11,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 mod pipeline;
 mod server;
 mod storage;
+mod providers;
 
 #[tokio::main]
 async fn main() -> Result<()> {
