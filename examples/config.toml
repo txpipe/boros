@@ -9,3 +9,9 @@ peers = [
     "Node:3001",
     "Node:3001",
 ]
+
+[monitor]
+uri = "https://mainnet.utxorpc-v0.demeter.run"
+
+[monitor.metadata]
+"dmtr-api-key" = "your key"

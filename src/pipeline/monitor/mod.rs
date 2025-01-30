@@ -4,10 +4,10 @@ use futures::{Stream, TryStreamExt};
 use gasket::framework::*;
 use tracing::info;
 
-#[cfg(feature = "file")]
-pub mod file;
+pub mod u5c;
 
-pub mod utxo;
+#[cfg(test)]
+pub mod file;
 
 #[derive(Debug)]
 pub enum Event {

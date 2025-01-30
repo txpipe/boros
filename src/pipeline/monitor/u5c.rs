@@ -20,7 +20,7 @@ pub struct UtxoChainSyncAdapter {
     metadata: HashMap<String, String>,
 }
 impl UtxoChainSyncAdapter {
-    pub fn new(config: UtxorpcConfig) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             url: config.uri,
             metadata: config.metadata,
@@ -87,7 +87,7 @@ impl ChainSyncAdapter for UtxoChainSyncAdapter {
 }
 
 #[derive(Deserialize, Clone)]
-pub struct UtxorpcConfig {
+pub struct Config {
     uri: String,
     metadata: HashMap<String, String>,
 }
