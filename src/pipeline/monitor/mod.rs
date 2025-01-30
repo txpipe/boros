@@ -4,41 +4,45 @@ use futures::{Stream, TryStreamExt};
 use gasket::framework::*;
 use tracing::info;
 
+#[cfg(feature = "file")]
 pub mod file;
+
+pub mod utxo;
 
 #[derive(Debug)]
 pub enum Event {
     RollForward(Vec<u8>),
 }
 
-pub trait MonitorAdapter {
-    fn stream(&self) -> Pin<Box<dyn Stream<Item = anyhow::Result<Event>>>>;
+type ChainSyncStream = Pin<Box<dyn Stream<Item = anyhow::Result<Event>> + Send>>;
+
+#[async_trait::async_trait]
+pub trait ChainSyncAdapter {
+    async fn stream(&mut self) -> anyhow::Result<ChainSyncStream>;
 }
 
 #[derive(Stage)]
 #[stage(name = "monitor", unit = "Event", worker = "Worker")]
 pub struct Stage {
-    adapter: Box<dyn MonitorAdapter + Send>,
+    stream: ChainSyncStream,
 }
 impl Stage {
-    pub fn new(adapter: Box<dyn MonitorAdapter + Send>) -> Self {
-        Self { adapter }
+    pub async fn try_new(mut adapter: Box<dyn ChainSyncAdapter>) -> anyhow::Result<Self> {
+        let stream = adapter.stream().await?;
+        Ok(Self { stream })
     }
 }
 
-pub struct Worker {
-    stream: Pin<Box<dyn Stream<Item = anyhow::Result<Event>>>>,
-}
+pub struct Worker;
 
 #[async_trait::async_trait(?Send)]
 impl gasket::framework::Worker<Stage> for Worker {
-    async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
-        let stream = stage.adapter.stream();
-        Ok(Self { stream })
+    async fn bootstrap(_stage: &Stage) -> Result<Self, WorkerError> {
+        Ok(Self)
     }
 
-    async fn schedule(&mut self, _stage: &mut Stage) -> Result<WorkSchedule<Event>, WorkerError> {
-        if let Some(e) = self.stream.try_next().await.or_restart()? {
+    async fn schedule(&mut self, stage: &mut Stage) -> Result<WorkSchedule<Event>, WorkerError> {
+        if let Some(e) = stage.stream.try_next().await.or_restart()? {
             return Ok(WorkSchedule::Unit(e));
         }
 

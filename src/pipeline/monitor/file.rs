@@ -2,19 +2,18 @@ use std::{
     fs,
     io::{self, BufRead},
     path::Path,
-    pin::Pin,
     time::Duration,
 };
 
 use async_stream::stream;
 use tokio::time::sleep;
 
-use super::{Event, MonitorAdapter};
+use super::{ChainSyncAdapter, ChainSyncStream, Event};
 
-pub struct FileMonitorAdapter {
+pub struct FileChainSyncAdapter {
     values: Vec<String>,
 }
-impl FileMonitorAdapter {
+impl FileChainSyncAdapter {
     pub fn try_new() -> anyhow::Result<Self> {
         let file = fs::File::open(Path::new("test/blocks"))?;
         let reader = io::BufReader::new(file);
@@ -23,8 +22,10 @@ impl FileMonitorAdapter {
         Ok(Self { values })
     }
 }
-impl MonitorAdapter for FileMonitorAdapter {
-    fn stream(&self) -> Pin<Box<dyn futures::Stream<Item = anyhow::Result<Event>>>> {
+
+#[async_trait::async_trait]
+impl ChainSyncAdapter for FileChainSyncAdapter {
+    async fn stream(&mut self) -> anyhow::Result<ChainSyncStream> {
         let values = self.values.clone();
 
         let stream = stream! {
@@ -35,6 +36,6 @@ impl MonitorAdapter for FileMonitorAdapter {
             }
         };
 
-        Box::pin(stream)
+        Ok(Box::pin(stream))
     }
 }

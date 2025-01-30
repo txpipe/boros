@@ -46,6 +46,8 @@ struct Config {
     server: server::Config,
     storage: storage::Config,
     peer_manager: pipeline::fanout::PeerManagerConfig,
+    // TODO improve monitor utxorpc config
+    monitor_utxorpc: pipeline::monitor::utxo::UtxorpcConfig,
 }
 
 impl Config {

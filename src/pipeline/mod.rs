@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use monitor::file::FileMonitorAdapter;
+use monitor::utxo::UtxoChainSyncAdapter;
 
 use crate::{storage::sqlite::SqliteTransaction, Config};
 
@@ -13,8 +13,12 @@ pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<(
     let ingest = ingest::Stage::new(tx_storage.clone());
     let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
 
-    let adapter = FileMonitorAdapter::try_new()?;
-    let monitor = monitor::Stage::new(Box::new(adapter));
+    let adapter = UtxoChainSyncAdapter::new(config.monitor_utxorpc);
+
+    #[cfg(feature = "file")]
+    let adapter = monitor::file::FileChainSyncAdapter::try_new()?;
+
+    let monitor = monitor::Stage::try_new(Box::new(adapter)).await?;
 
     let policy: gasket::runtime::Policy = Default::default();
 
