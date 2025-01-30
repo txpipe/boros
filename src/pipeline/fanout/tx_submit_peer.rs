@@ -237,7 +237,7 @@ impl TxSubmitPeer {
                 0,
                 request,
                 peer_addr,
-                &unfulfilled_request,
+                unfulfilled_request,
             )
             .await
             .ok();
