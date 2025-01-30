@@ -3,7 +3,7 @@ use std::{collections::HashMap, str::FromStr};
 use async_stream::stream;
 use futures::TryStreamExt;
 use pallas::interop::utxorpc::spec::sync::{
-    follow_tip_response, sync_service_client::SyncServiceClient, FollowTipRequest,
+    any_chain_block, follow_tip_response, sync_service_client::SyncServiceClient, FollowTipRequest,
 };
 use serde::Deserialize;
 use tonic::{
@@ -63,12 +63,16 @@ impl ChainSyncAdapter for UtxoChainSyncAdapter {
             while let Some(follow_tip) = tip_stream.try_next().await? {
                 if let Some(action) = follow_tip.action {
                     match action {
-                        follow_tip_response::Action::Apply(block) => {
-                            info!("new action");
-                            yield Ok(Event::RollForward(block.native_bytes.to_vec()));
+                        follow_tip_response::Action::Apply(any) => {
+                            yield Ok(Event::RollForward(any.native_bytes.to_vec()));
                         },
-                        follow_tip_response::Action::Undo(block) => {
-                            dbg!("undo not implemented yet", block);
+                        follow_tip_response::Action::Undo(any) => {
+                            match any.chain.unwrap() {
+                                any_chain_block::Chain::Cardano(block) => {
+                                    let header = block.header.unwrap();
+                                    yield Ok(Event::Rollback(header.slot, header.hash.to_vec()));
+                                },
+                            }
                         },
                         follow_tip_response::Action::Reset(block_ref) => {
                             dbg!("reset not implemented yet", block_ref);

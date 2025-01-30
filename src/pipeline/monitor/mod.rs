@@ -12,6 +12,7 @@ pub mod utxo;
 #[derive(Debug)]
 pub enum Event {
     RollForward(Vec<u8>),
+    Rollback(u64, Vec<u8>),
 }
 
 type ChainSyncStream = Pin<Box<dyn Stream<Item = anyhow::Result<Event>> + Send>>;
@@ -54,6 +55,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
         match unit {
             Event::RollForward(v) => info!("RollForward {}", hex::encode(v)),
+            Event::Rollback(slot, _hash) => info!("Rollback slot {slot}"),
         };
 
         Ok(())
