@@ -12,19 +12,19 @@ pub enum UtxoQueryError {
 }
 
 #[async_trait]
-pub trait UtxoDataProvider {
+pub trait UtxoDataAdapter {
     async fn fetch_utxos(
         &self,
         utxo_refs: &[String],
     ) -> Result<HashMap<String, Vec<u8>>, UtxoQueryError>;
 }
 
-pub struct MockUtxoDataProvider {
+pub struct MockUtxoDataAdapter {
     pub known_utxos: HashMap<String, Vec<u8>>,
 }
 
 #[async_trait]
-impl UtxoDataProvider for MockUtxoDataProvider {
+impl UtxoDataAdapter for MockUtxoDataAdapter {
     async fn fetch_utxos(
         &self,
         utxo_refs: &[String],
@@ -54,7 +54,7 @@ mod tests {
         known.insert("abc123#0".to_string(), vec![0x82, 0xa0]); // example CBOR
         known.insert("abc123#1".to_string(), vec![0x83, 0x04]);
 
-        let provider = MockUtxoDataProvider { known_utxos: known };
+        let provider = MockUtxoDataAdapter { known_utxos: known };
 
         // We'll request three references, one of which doesn't exist
         let requested = vec![
