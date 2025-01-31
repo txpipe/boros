@@ -1,0 +1,9 @@
+.DS_Store
+/node_modules/
+
+# Next
+.next
+
+# Ignore all .env files except .env.example
+.env*
+!.env.example

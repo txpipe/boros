@@ -1,0 +1,24 @@
+---
+title: Design Adrs - Boros Docs
+sidebarTitle: Adrs
+asIndexPage: true
+---
+
+import { Cards } from 'nextra/components'
+import { FileIcon, FolderIcon, MdxIcon } from 'nextra/icons'
+import { MDXRemote } from 'nextra/mdx-remote'
+import { createIndexPage, getPageMap } from 'nextra/page-map'
+
+# Architectural Decision Record
+
+<MDXRemote
+  compiledSource={await createIndexPage(
+    await getPageMap('/design/adrs')
+  )}
+  components={{
+    Cards,
+    FileIcon,
+    FolderIcon,
+    MdxIcon
+  }}
+/>

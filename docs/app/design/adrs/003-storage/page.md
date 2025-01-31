@@ -1,3 +1,8 @@
+---
+title: Storage - Boros Docs
+sidebarTitle: Storage
+---
+
 # Decision to choose a storage
 
 **status**: draft
