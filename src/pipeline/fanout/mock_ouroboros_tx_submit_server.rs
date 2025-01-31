@@ -82,7 +82,6 @@ impl MockOuroborosTxSubmitPeerServer {
             }
         }
 
-
         // Recieve TxIds for the blocking request
         let txids_reply = match tx_server.receive_next_reply().await {
             Ok(reply) => reply,
@@ -152,7 +151,6 @@ impl MockOuroborosTxSubmitPeerServer {
             panic!("SERVER: error replying TxIds => {err:?}");
         }
 
-
         // Recieve Tx bodies
         let txs_reply = match tx_server.receive_next_reply().await {
             Ok(reply) => reply,
@@ -172,7 +170,9 @@ impl MockOuroborosTxSubmitPeerServer {
             let to_acknowledge_ids = collected_tx_ids.drain(..bodies.len()).collect::<Vec<_>>();
             let mut acknowledge_txs = self.acknowledge_txs.lock().unwrap();
             to_acknowledge_ids.iter().for_each(|EraTxId(_, hash)| {
-                acknowledge_txs.push(pallas::crypto::hash::Hash::new(hash.as_slice().try_into().unwrap()));
+                acknowledge_txs.push(pallas::crypto::hash::Hash::new(
+                    hash.as_slice().try_into().unwrap(),
+                ));
             });
             info!(
                 "SERVER: ack so far => {acknowledge}, State => {:?}, agency is theirs",
@@ -180,7 +180,7 @@ impl MockOuroborosTxSubmitPeerServer {
             );
             info!("SERVER: got Tx bodies => {}", bodies.len());
         }
-        
+
         info!("SERVER: done, closing connection");
         peer_server.abort().await;
         *self.is_done.write().unwrap() = true;
