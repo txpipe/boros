@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use itertools::Itertools;
 use pallas::crypto::hash::Hash;
+use pallas::network::miniprotocols::peersharing::PeerAddress;
 use pallas::network::miniprotocols::txsubmission::{EraTxBody, EraTxId, Request};
 use pallas::network::{facades::PeerClient, miniprotocols::txsubmission::TxIdAndSize};
 use tokio::sync::{Mutex, RwLock};
@@ -12,7 +13,7 @@ use tracing::{error, info};
 
 use super::mempool::{self, Mempool};
 
-pub struct TxSubmitPeer {
+pub struct Peer {
     mempool: Arc<Mutex<Mempool>>,
     client: Arc<Mutex<Option<PeerClient>>>,
     peer_addr: String,
@@ -20,9 +21,9 @@ pub struct TxSubmitPeer {
     unfulfilled_request: Arc<RwLock<Option<usize>>>,
 }
 
-impl TxSubmitPeer {
+impl Peer {
     pub fn new(peer_addr: &str, network_magic: u64) -> Self {
-        TxSubmitPeer {
+        Peer {
             mempool: Arc::new(Mutex::new(Mempool::new())),
             client: Arc::new(Mutex::new(None)),
             peer_addr: peer_addr.to_string(),
@@ -55,6 +56,27 @@ impl TxSubmitPeer {
         self.start_background_task();
 
         Ok(())
+    }
+
+    pub async fn discover_peers(&mut self) -> Result<Vec<PeerAddress>, Error> {
+        let mut client_guard = self.client.lock().await;
+        let client = match client_guard.as_mut() {
+            Some(c) => c,
+            None => {
+                error!(peer = %self.peer_addr, "No client available");
+                return Err(Error);
+            }
+        };
+
+        client.peersharing().send_share_request(3).await.unwrap();
+
+        let mut discovered = vec![];
+        if let Some(peers) = client.peersharing().recv_peer_addresses().await.ok() {
+            info!(peer = %self.peer_addr, "Discovered new peers: {:?}", peers);
+            discovered.extend(peers);
+        }
+
+        Ok(discovered)
     }
 
     fn start_background_task(&self) {
