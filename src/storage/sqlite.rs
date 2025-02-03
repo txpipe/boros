@@ -146,6 +146,34 @@ impl SqliteTransaction {
         Ok(transactions)
     }
 
+    pub async fn find_to_rollback(&self, slot: u64) -> Result<Vec<Transaction>> {
+        let status = TransactionStatus::Confirmed.to_string();
+        let slot = slot as i64;
+
+        let transactions = sqlx::query_as::<_, Transaction>(
+            r#"
+                    SELECT
+                    	id,
+                    	raw,
+                    	status,
+                        slot,
+                    	priority,
+                    	created_at,
+                    	updated_at
+                    FROM
+                    	tx
+                    WHERE
+	                    tx.status = $1 AND tx.slot > $2;
+            "#,
+        )
+        .bind(status)
+        .bind(slot)
+        .fetch_all(&self.sqlite.db)
+        .await?;
+
+        Ok(transactions)
+    }
+
     pub async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
         let transaction = sqlx::query_as::<_, Transaction>(
             r#"
@@ -347,7 +375,7 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn it_should_find_transactions() {
+    async fn it_should_find() {
         let storage = mock_sqlite().await;
         let transaction = Transaction::default();
 
@@ -356,5 +384,43 @@ mod sqlite_tests {
         let result = storage.find(TransactionStatus::Pending).await;
         assert!(result.is_ok());
         assert!(result.unwrap().len() == 1);
+    }
+
+    #[tokio::test]
+    async fn it_should_find_to_rollback() {
+        let storage = mock_sqlite().await;
+
+        let transaction = Transaction::default();
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let transaction = Transaction {
+            status: TransactionStatus::Confirmed,
+            slot: Some(5),
+            ..Default::default()
+        };
+        storage.update(&transaction).await.unwrap();
+
+        let result = storage.find_to_rollback(1).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().len() == 1);
+    }
+
+    #[tokio::test]
+    async fn it_should_return_empty_find_to_rollback_when_tx_slot_lower_than_block_slot() {
+        let storage = mock_sqlite().await;
+
+        let transaction = Transaction::default();
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let transaction = Transaction {
+            status: TransactionStatus::Confirmed,
+            slot: Some(5),
+            ..Default::default()
+        };
+        storage.update(&transaction).await.unwrap();
+
+        let result = storage.find_to_rollback(10).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 }
