@@ -179,6 +179,41 @@ impl SqliteTransaction {
 
         Ok(())
     }
+
+    pub async fn update_batch(&self, txs: &Vec<Transaction>) -> Result<()> {
+        let mut db_tx = self.sqlite.db.begin().await?;
+
+        for tx in txs {
+            let status = tx.status.to_string();
+            let updated_at = Utc::now();
+            // TODO: check the maximium size of i64 and compare with cardano slot.
+            let slot = tx.slot.map(|v| v as i64);
+
+            sqlx::query!(
+                r#"
+                UPDATE
+                	tx
+                SET
+                	raw = $1,
+                	status = $2,
+                	slot = $3,
+                	updated_at = $4
+                WHERE
+                	id = $5;
+            "#,
+                tx.raw,
+                status,
+                slot,
+                updated_at,
+                tx.id,
+            )
+            .execute(&mut *db_tx)
+            .await?;
+        }
+
+        db_tx.commit().await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -239,7 +274,7 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn it_should_update_transaction_valid() {
+    async fn it_should_update_transaction() {
         let storage = mock_sqlite().await;
 
         let transaction = Transaction::default();
@@ -251,6 +286,38 @@ mod sqlite_tests {
         assert!(result.is_ok());
 
         let result = storage.next(TransactionStatus::Validated).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn it_should_update_batch_transaction() {
+        let storage = mock_sqlite().await;
+
+        let mut batch = Vec::new();
+
+        let mut transaction = Transaction::default();
+        transaction.id = "hex1".into();
+        batch.push(transaction.clone());
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let mut transaction = Transaction::default();
+        transaction.id = "hex2".into();
+        batch.push(transaction.clone());
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let batch = batch
+            .iter_mut()
+            .map(|tx| {
+                tx.status = TransactionStatus::Confirmed;
+                tx.slot = Some(1);
+                tx.clone()
+            })
+            .collect();
+        let result = storage.update_batch(&batch).await;
+        assert!(result.is_ok());
+
+        let result = storage.next(TransactionStatus::Confirmed).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_some());
     }
