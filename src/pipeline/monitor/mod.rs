@@ -61,8 +61,10 @@ impl gasket::framework::Worker<Stage> for Worker {
         match unit {
             Event::RollForward(slot, txs) => {
                 // TODO: validate slot tx "timeout"
+                // TODO: change tx to rejected when reach the quantity of attempts.
+                //       fanout will try N quantity
 
-                // TODO: analyse possible problem to get all inflight data
+                // TODO: analyse possible problem with the query to get all inflight data
                 let txs_in_flight = stage
                     .storage
                     .find(TransactionStatus::InFlight)
@@ -71,11 +73,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
                 let txs_to_confirm = txs_in_flight
                     .into_iter()
-                    .filter(|itx| {
-                        txs.iter()
-                            .find(|tx| hex::encode(&tx.hash) == itx.id)
-                            .is_some()
-                    })
+                    .filter(|itx| txs.iter().any(|tx| hex::encode(&tx.hash) == itx.id))
                     .map(|mut tx| {
                         tx.status = TransactionStatus::Confirmed;
                         tx.slot = Some(*slot);
@@ -105,7 +103,7 @@ impl gasket::framework::Worker<Stage> for Worker {
                             return tx;
                         }
 
-                        tx.slot = Some(slot.clone());
+                        tx.slot = Some(*slot);
                         tx
                     })
                     .collect();
