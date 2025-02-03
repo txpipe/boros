@@ -31,7 +31,7 @@ echo "address: $ADDRESS"
 UTXO=$(./cardano-cli query utxo --address $ADDRESS --testnet-magic $NETWORK_MAGIC --output-json | jq -r 'to_entries | .[0].key')
 
 if [ -z "$UTXO" ] || [ "$UTXO" == "null" ]; then
-    echo "no balance yet"
+    echo "no balance yet. For testnet, request fund in the faucet"
     exit 1
 fi
 
