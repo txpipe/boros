@@ -6,6 +6,7 @@ use std::{
 };
 
 use async_stream::stream;
+use pallas::ledger::traverse::MultiEraBlock;
 use tokio::time::sleep;
 
 use super::{ChainSyncAdapter, ChainSyncStream, Event};
@@ -31,7 +32,11 @@ impl ChainSyncAdapter for FileChainSyncAdapter {
         let stream = stream! {
             for item in values.into_iter() {
                 let bytes = hex::decode(&item)?;
-                yield Ok(Event::RollForward(bytes));
+                let block = MultiEraBlock::decode(&bytes)?;
+                let _txs = block.txs();
+                // TODO: map pallas tx to u5c tx
+
+                yield Ok(Event::RollForward(Default::default()));
                 sleep(Duration::from_secs(20)).await;
             }
         };

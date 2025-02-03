@@ -52,8 +52,6 @@ impl gasket::framework::Worker<Stage> for Worker {
     }
 
     async fn execute(&mut self, unit: &Event, _stage: &mut Stage) -> Result<(), WorkerError> {
-        info!("monitor");
-
         match unit {
             Event::RollForward(v) => info!("RollForward {} txs", v.len()),
             Event::Rollback(slot, _hash) => info!("Rollback slot {slot}"),

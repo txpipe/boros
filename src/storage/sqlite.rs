@@ -53,7 +53,7 @@ impl FromRow<'_, SqliteRow> for Transaction {
             priority: priority
                 .try_into()
                 .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
-
+            slot: row.try_get("slot")?,
             dependencies: None,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
@@ -129,6 +129,7 @@ impl SqliteTransaction {
                     	id,
                     	raw,
                     	status,
+                        slot,
                     	priority,
                     	created_at,
                     	updated_at
@@ -152,6 +153,8 @@ impl SqliteTransaction {
     pub async fn update(&self, tx: &Transaction) -> Result<()> {
         let status = tx.status.to_string();
         let updated_at = Utc::now();
+        // TODO: check the maximium size of i64 and compare with cardano slot.
+        let slot = tx.slot.map(|v| v as i64);
 
         sqlx::query!(
             r#"
@@ -160,12 +163,14 @@ impl SqliteTransaction {
                 SET
                 	raw = $1,
                 	status = $2,
-                	updated_at = $3
+                	slot = $3,
+                	updated_at = $4
                 WHERE
-                	id = $4;
+                	id = $5;
             "#,
             tx.raw,
             status,
+            slot,
             updated_at,
             tx.id,
         )
@@ -177,7 +182,7 @@ impl SqliteTransaction {
 }
 
 #[cfg(test)]
-mod tests {
+mod sqlite_tests {
     use crate::storage::{Transaction, TransactionStatus};
 
     use super::{SqliteStorage, SqliteTransaction};
