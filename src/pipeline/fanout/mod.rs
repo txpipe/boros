@@ -7,13 +7,13 @@ use gasket::framework::*;
 use serde::Deserialize;
 use tokio::time::sleep;
 use tracing::info;
-use tx_submit_peer_manager::TxSubmitPeerManager;
+use peer_manager::PeerManager;
 
 use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
 
 pub mod mempool;
-pub mod tx_submit_peer;
-pub mod tx_submit_peer_manager;
+pub mod peer;
+pub mod peer_manager;
 
 #[derive(Stage)]
 #[stage(name = "fanout", unit = "Transaction", worker = "Worker")]
@@ -29,7 +29,7 @@ impl Stage {
 }
 
 pub struct Worker {
-    tx_submit_peer_manager: TxSubmitPeerManager,
+    peer_manager: PeerManager,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -42,11 +42,11 @@ impl gasket::framework::Worker<Stage> for Worker {
 
         // Proof of Concept: TxSubmitPeerManager
         // Pass Config Network Magic and Peer Addresses
-        let mut tx_submit_peer_manager = TxSubmitPeerManager::new(2, peer_addresses);
-        tx_submit_peer_manager.init().await.unwrap();
+        let mut peer_manager = PeerManager::new(2, peer_addresses);
+        peer_manager.init().await.unwrap();
 
         Ok(Self {
-            tx_submit_peer_manager,
+            peer_manager,
         })
     }
 
@@ -73,7 +73,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
         // extract cbor from unit and pass it to tx_submit_peer_manager
         // comment out for now until we have a proper tx to submit
-        self.tx_submit_peer_manager
+        self.peer_manager
             .add_tx(transaction.raw.clone())
             .await;
 
@@ -114,7 +114,7 @@ mod tests {
         peer_server.clone().init().await;
 
         tokio::time::sleep(Duration::from_millis(200)).await;
-        let mut tx_submit_peer_client = tx_submit_peer::TxSubmitPeer::new("127.0.0.1:3001", 2);
+        let mut tx_submit_peer_client = peer::Peer::new("127.0.0.1:3001", 2);
 
         tx_submit_peer_client.init().await.unwrap();
 
