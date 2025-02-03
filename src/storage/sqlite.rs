@@ -122,6 +122,30 @@ impl SqliteTransaction {
         Ok(())
     }
 
+    pub async fn find(&self, status: TransactionStatus) -> Result<Vec<Transaction>> {
+        let transactions = sqlx::query_as::<_, Transaction>(
+            r#"
+                    SELECT
+                    	id,
+                    	raw,
+                    	status,
+                        slot,
+                    	priority,
+                    	created_at,
+                    	updated_at
+                    FROM
+                    	tx
+                    WHERE
+                    	tx.status = $1;
+            "#,
+        )
+        .bind(status.to_string())
+        .fetch_all(&self.sqlite.db)
+        .await?;
+
+        Ok(transactions)
+    }
+
     pub async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
         let transaction = sqlx::query_as::<_, Transaction>(
             r#"
@@ -320,5 +344,17 @@ mod sqlite_tests {
         let result = storage.next(TransactionStatus::Confirmed).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn it_should_find_transactions() {
+        let storage = mock_sqlite().await;
+        let transaction = Transaction::default();
+
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let result = storage.find(TransactionStatus::Pending).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().len() == 1);
     }
 }
