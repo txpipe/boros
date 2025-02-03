@@ -2,6 +2,7 @@ use std::pin::Pin;
 
 use futures::{Stream, TryStreamExt};
 use gasket::framework::*;
+use pallas::interop::utxorpc::spec::cardano::Tx;
 use tracing::info;
 
 pub mod u5c;
@@ -11,7 +12,7 @@ pub mod file;
 
 #[derive(Debug)]
 pub enum Event {
-    RollForward(Vec<u8>),
+    RollForward(Vec<Tx>),
     Rollback(u64, Vec<u8>),
 }
 
@@ -54,7 +55,7 @@ impl gasket::framework::Worker<Stage> for Worker {
         info!("monitor");
 
         match unit {
-            Event::RollForward(v) => info!("RollForward {}", hex::encode(v)),
+            Event::RollForward(v) => info!("RollForward {} txs", v.len()),
             Event::Rollback(slot, _hash) => info!("Rollback slot {slot}"),
         };
 

@@ -64,7 +64,14 @@ impl ChainSyncAdapter for UtxoChainSyncAdapter {
                 if let Some(action) = follow_tip.action {
                     match action {
                         follow_tip_response::Action::Apply(any) => {
-                            yield Ok(Event::RollForward(any.native_bytes.to_vec()));
+                            match any.chain.unwrap() {
+                                any_chain_block::Chain::Cardano(block) => {
+                                    //let header = block.header.unwrap();
+                                    if let Some(body) = block.body {
+                                        yield Ok(Event::RollForward(body.tx));
+                                    }
+                                },
+                            }
                         },
                         follow_tip_response::Action::Undo(any) => {
                             match any.chain.unwrap() {
