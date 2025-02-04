@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 use std::fmt::Error;
 
-use pallas::network::miniprotocols::peersharing::PeerAddress;
 use tracing::info;
 
 use super::peer::Peer;
 
+pub struct PeerManagerInitConfig {
+    pub desired_peers: u8
+}
+
 pub struct PeerManager {
     network_magic: u64,
-    peers: HashMap<String, Option<Peer>>,
-    discovered_peers: Vec<PeerAddress>
+    peers: HashMap<String, Option<Peer>>
 }
 
 impl PeerManager {
@@ -20,20 +22,28 @@ impl PeerManager {
                 .into_iter()
                 .map(|peer_addr| (peer_addr, None))
                 .collect(),
-            discovered_peers: vec![]
         }
     }
 
-    pub async fn init(&mut self) -> Result<(), Error> {
+    pub async fn init(&mut self, config: PeerManagerInitConfig) -> Result<(), Error> {
+        let mut collected_discovered_peers = vec![];
+        
+        // Initialize Bootstrap Peers and collect discovered peers
         for (peer_addr, peer) in self.peers.iter_mut() {
-            let mut txsubmitpeer = Peer::new(peer_addr, self.network_magic);
-            txsubmitpeer.init().await.unwrap();
-            if let Ok(new_peers) = txsubmitpeer.discover_peers().await {
+
+            let mut new_peer = Peer::new(peer_addr, self.network_magic);
+            new_peer.init().await.unwrap();
+
+            if let Ok(new_peers) = new_peer.discover_peers(config.desired_peers).await {
                 info!("Discovered peers: {:?}", new_peers);
-                self.discovered_peers.extend(new_peers);
+                // Merge the discovered peers into the collected list
+                collected_discovered_peers.extend(new_peers);
             }
-            *peer = Some(txsubmitpeer);
+
+            *peer = Some(new_peer);
+
         }
+
         Ok(())
     }
 
