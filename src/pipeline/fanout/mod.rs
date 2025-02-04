@@ -1,13 +1,10 @@
-use std::{
-    sync::Arc,
-    time::Duration
-};
+use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
+use peer_manager::{PeerManager, PeerManagerInitConfig};
 use serde::Deserialize;
 use tokio::time::sleep;
 use tracing::info;
-use peer_manager::PeerManager;
 
 use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
 
@@ -35,19 +32,20 @@ pub struct Worker {
 #[async_trait::async_trait(?Send)]
 impl gasket::framework::Worker<Stage> for Worker {
     async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
-        // Load configuration and Start Clients
         let peer_addresses = stage.config.peers.clone();
+        let desired_peer_count = stage.config.desired_peer_count;
 
         info!("Peer Addresses: {:?}", peer_addresses);
 
-        // Proof of Concept: TxSubmitPeerManager
-        // Pass Config Network Magic and Peer Addresses
         let mut peer_manager = PeerManager::new(2, peer_addresses);
-        peer_manager.init().await.unwrap();
+        peer_manager
+            .init(PeerManagerInitConfig {
+                desired_peers: desired_peer_count,
+            })
+            .await
+            .unwrap();
 
-        Ok(Self {
-            peer_manager,
-        })
+        Ok(Self { peer_manager })
     }
 
     async fn schedule(
@@ -73,9 +71,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
         // extract cbor from unit and pass it to tx_submit_peer_manager
         // comment out for now until we have a proper tx to submit
-        self.peer_manager
-            .add_tx(transaction.raw.clone())
-            .await;
+        self.peer_manager.add_tx(transaction.raw.clone()).await;
 
         transaction.status = TransactionStatus::InFlight;
         stage.storage.update(&transaction).await.or_retry()?;
@@ -87,6 +83,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 #[derive(Deserialize, Clone)]
 pub struct PeerManagerConfig {
     peers: Vec<String>,
+    desired_peer_count: u8,
 }
 
 // Test for Fanout Stage

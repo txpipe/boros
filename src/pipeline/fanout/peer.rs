@@ -58,7 +58,7 @@ impl Peer {
         Ok(())
     }
 
-    pub async fn discover_peers(&mut self) -> Result<Vec<PeerAddress>, Error> {
+    pub async fn discover_peers(&mut self, desired_peers: u8) -> Result<Vec<PeerAddress>, Error> {
         let mut client_guard = self.client.lock().await;
         let client = match client_guard.as_mut() {
             Some(c) => c,
@@ -68,10 +68,10 @@ impl Peer {
             }
         };
 
-        client.peersharing().send_share_request(3).await.unwrap();
+        client.peersharing().send_share_request(desired_peers).await.unwrap();
 
         let mut discovered = vec![];
-        if let Some(peers) = client.peersharing().recv_peer_addresses().await.ok() {
+        if let Ok(peers) = client.peersharing().recv_peer_addresses().await {
             info!(peer = %self.peer_addr, "Discovered new peers: {:?}", peers);
             discovered.extend(peers);
         }
