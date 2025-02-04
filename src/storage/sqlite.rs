@@ -61,6 +61,15 @@ impl FromRow<'_, SqliteRow> for Transaction {
     }
 }
 
+impl FromRow<'_, SqliteRow> for Cursor {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Self {
+            slot: row.try_get("slot")?,
+            hash: row.try_get("hash")?,
+        })
+    }
+}
+
 pub struct SqliteTransaction {
     sqlite: SqliteStorage,
 }
@@ -266,26 +275,8 @@ impl SqliteTransaction {
         db_tx.commit().await?;
         Ok(())
     }
-}
 
-impl FromRow<'_, SqliteRow> for Cursor {
-    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
-        Ok(Self {
-            slot: row.try_get("slot")?,
-            hash: row.try_get("hash")?,
-        })
-    }
-}
-
-pub struct SqliteCursor {
-    sqlite: SqliteStorage,
-}
-impl SqliteCursor {
-    pub fn new(sqlite: SqliteStorage) -> Self {
-        Self { sqlite }
-    }
-
-    pub async fn set(&self, cursor: &Cursor) -> Result<()> {
+    pub async fn set_cursor(&self, cursor: &Cursor) -> Result<()> {
         let slot = cursor.slot as i64;
 
         sqlx::query!(
@@ -306,7 +297,7 @@ impl SqliteCursor {
         Ok(())
     }
 
-    pub async fn current(&self) -> Result<Option<Cursor>> {
+    pub async fn get_cursor(&self) -> Result<Option<Cursor>> {
         let cursor = sqlx::query_as::<_, Cursor>(
             r#"
                     SELECT
@@ -323,9 +314,18 @@ impl SqliteCursor {
     }
 }
 
+pub struct SqliteCursor {
+    sqlite: SqliteStorage,
+}
+impl SqliteCursor {
+    pub fn new(sqlite: SqliteStorage) -> Self {
+        Self { sqlite }
+    }
+}
+
 #[cfg(test)]
-mod sqlite_transaction_tests {
-    use crate::storage::{Transaction, TransactionStatus};
+mod sqlite_tests {
+    use crate::storage::{Cursor, Transaction, TransactionStatus};
 
     use super::{SqliteStorage, SqliteTransaction};
 
@@ -478,25 +478,13 @@ mod sqlite_transaction_tests {
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
-}
-
-#[cfg(test)]
-mod sqlite_cursor_tests {
-    use crate::storage::Cursor;
-
-    use super::{SqliteCursor, SqliteStorage};
-
-    async fn mock_sqlite() -> SqliteCursor {
-        let sqlite_storage = SqliteStorage::ephemeral().await.unwrap();
-        SqliteCursor::new(sqlite_storage)
-    }
 
     #[tokio::test]
     async fn it_should_set() {
         let storage = mock_sqlite().await;
         let cursor = Cursor::default();
 
-        let result = storage.set(&cursor).await;
+        let result = storage.set_cursor(&cursor).await;
         assert!(result.is_ok());
     }
 
@@ -505,16 +493,16 @@ mod sqlite_cursor_tests {
         let storage = mock_sqlite().await;
 
         let cursor = Cursor::default();
-        storage.set(&cursor).await.unwrap();
+        storage.set_cursor(&cursor).await.unwrap();
 
         let cursor = Cursor {
             slot: 2,
             ..Default::default()
         };
-        let result = storage.set(&cursor).await;
+        let result = storage.set_cursor(&cursor).await;
         assert!(result.is_ok());
 
-        let result = storage.current().await;
+        let result = storage.get_cursor().await;
         assert!(result.is_ok());
         assert!(result.as_ref().unwrap().is_some());
         assert!(result.unwrap().unwrap().slot == 2);
@@ -524,9 +512,9 @@ mod sqlite_cursor_tests {
     async fn it_should_find_current() {
         let storage = mock_sqlite().await;
         let cursor = Cursor::default();
-        storage.set(&cursor).await.unwrap();
+        storage.set_cursor(&cursor).await.unwrap();
 
-        let result = storage.current().await;
+        let result = storage.get_cursor().await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_some());
     }
