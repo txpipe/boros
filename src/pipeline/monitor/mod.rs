@@ -12,10 +12,12 @@ pub mod u5c;
 #[cfg(test)]
 pub mod file;
 
+type Point = (u64, Vec<u8>);
+
 #[derive(Debug)]
 pub enum Event {
-    RollForward(u64, Vec<Tx>),
-    Rollback(u64, Vec<u8>),
+    RollForward(Point, Vec<Tx>),
+    Rollback(Point),
 }
 
 type ChainSyncStream = Pin<Box<dyn Stream<Item = anyhow::Result<Event>> + Send>>;
@@ -59,7 +61,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
     async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
         match unit {
-            Event::RollForward(slot, txs) => {
+            Event::RollForward((slot, _), txs) => {
                 // TODO: validate slot tx "timeout"
                 // TODO: change tx to rejected when reach the quantity of attempts.
                 //       fanout will try N quantity
@@ -89,7 +91,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
                 info!("RollForward {} txs", txs.len())
             }
-            Event::Rollback(slot, _hash) => {
+            Event::Rollback((slot, _hash)) => {
                 info!("Rollback slot {slot}");
 
                 let txs = stage.storage.find_to_rollback(*slot).await.or_retry()?;

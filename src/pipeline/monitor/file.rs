@@ -36,7 +36,7 @@ impl ChainSyncAdapter for FileChainSyncAdapter {
                 let _txs = block.txs();
                 // TODO: map pallas tx to u5c tx
 
-                yield Ok(Event::RollForward(0, Default::default()));
+                yield Ok(Event::RollForward((0,Default::default()), Default::default()));
                 sleep(Duration::from_secs(20)).await;
             }
         };

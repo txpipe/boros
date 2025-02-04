@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS tx_dependence (
 );
 
 CREATE TABLE IF NOT EXISTS cursor (
-  slot INTEGER NOT NULL ,
-  hash BLOB NOT NULL,
-  PRIMARY KEY (slot, hash)
+  id INTEGER PRIMARY KEY CHECK (id = 0),
+  slot INTEGER NOT NULL,
+  hash BLOB NOT NULL
 );

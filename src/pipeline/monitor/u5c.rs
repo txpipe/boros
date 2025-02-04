@@ -68,7 +68,7 @@ impl ChainSyncAdapter for UtxoChainSyncAdapter {
                                 any_chain_block::Chain::Cardano(block) => {
                                     if let Some(body) = block.body {
                                         let header = block.header.unwrap();
-                                        yield Ok(Event::RollForward(header.slot, body.tx));
+                                        yield Ok(Event::RollForward((header.slot, header.hash.to_vec()), body.tx));
                                     }
                                 },
                             }
@@ -77,7 +77,7 @@ impl ChainSyncAdapter for UtxoChainSyncAdapter {
                             match any.chain.unwrap() {
                                 any_chain_block::Chain::Cardano(block) => {
                                     let header = block.header.unwrap();
-                                    yield Ok(Event::Rollback(header.slot, header.hash.to_vec()));
+                                    yield Ok(Event::Rollback((header.slot, header.hash.to_vec())));
                                 },
                             }
                         },
