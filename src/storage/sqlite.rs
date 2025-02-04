@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Error, Result};
 use chrono::Utc;
@@ -61,21 +61,12 @@ impl FromRow<'_, SqliteRow> for Transaction {
     }
 }
 
-impl FromRow<'_, SqliteRow> for Cursor {
-    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
-        Ok(Self {
-            slot: row.try_get("slot")?,
-            hash: row.try_get("hash")?,
-        })
-    }
-}
-
 pub struct SqliteTransaction {
-    sqlite: SqliteStorage,
+    sqlite: Arc<SqliteStorage>,
 }
 
 impl SqliteTransaction {
-    pub fn new(sqlite: SqliteStorage) -> Self {
+    pub fn new(sqlite: Arc<SqliteStorage>) -> Self {
         Self { sqlite }
     }
 
@@ -275,8 +266,26 @@ impl SqliteTransaction {
         db_tx.commit().await?;
         Ok(())
     }
+}
 
-    pub async fn set_cursor(&self, cursor: &Cursor) -> Result<()> {
+impl FromRow<'_, SqliteRow> for Cursor {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Self {
+            slot: row.try_get("slot")?,
+            hash: row.try_get("hash")?,
+        })
+    }
+}
+
+pub struct SqliteCursor {
+    sqlite: Arc<SqliteStorage>,
+}
+impl SqliteCursor {
+    pub fn new(sqlite: Arc<SqliteStorage>) -> Self {
+        Self { sqlite }
+    }
+
+    pub async fn set(&self, cursor: &Cursor) -> Result<()> {
         let slot = cursor.slot as i64;
 
         sqlx::query!(
@@ -297,7 +306,7 @@ impl SqliteTransaction {
         Ok(())
     }
 
-    pub async fn get_cursor(&self) -> Result<Option<Cursor>> {
+    pub async fn current(&self) -> Result<Option<Cursor>> {
         let cursor = sqlx::query_as::<_, Cursor>(
             r#"
                     SELECT
@@ -314,23 +323,16 @@ impl SqliteTransaction {
     }
 }
 
-pub struct SqliteCursor {
-    sqlite: SqliteStorage,
-}
-impl SqliteCursor {
-    pub fn new(sqlite: SqliteStorage) -> Self {
-        Self { sqlite }
-    }
-}
-
 #[cfg(test)]
-mod sqlite_tests {
-    use crate::storage::{Cursor, Transaction, TransactionStatus};
+mod sqlite_transaction_tests {
+    use std::sync::Arc;
+
+    use crate::storage::{Transaction, TransactionStatus};
 
     use super::{SqliteStorage, SqliteTransaction};
 
     async fn mock_sqlite() -> SqliteTransaction {
-        let sqlite_storage = SqliteStorage::ephemeral().await.unwrap();
+        let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
         SqliteTransaction::new(sqlite_storage)
     }
 
@@ -478,13 +480,27 @@ mod sqlite_tests {
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
+}
+
+#[cfg(test)]
+mod sqlite_cursor_tests {
+    use std::sync::Arc;
+
+    use crate::storage::Cursor;
+
+    use super::{SqliteCursor, SqliteStorage};
+
+    async fn mock_sqlite() -> SqliteCursor {
+        let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
+        SqliteCursor::new(sqlite_storage)
+    }
 
     #[tokio::test]
     async fn it_should_set() {
         let storage = mock_sqlite().await;
         let cursor = Cursor::default();
 
-        let result = storage.set_cursor(&cursor).await;
+        let result = storage.set(&cursor).await;
         assert!(result.is_ok());
     }
 
@@ -493,16 +509,16 @@ mod sqlite_tests {
         let storage = mock_sqlite().await;
 
         let cursor = Cursor::default();
-        storage.set_cursor(&cursor).await.unwrap();
+        storage.set(&cursor).await.unwrap();
 
         let cursor = Cursor {
             slot: 2,
             ..Default::default()
         };
-        let result = storage.set_cursor(&cursor).await;
+        let result = storage.set(&cursor).await;
         assert!(result.is_ok());
 
-        let result = storage.get_cursor().await;
+        let result = storage.current().await;
         assert!(result.is_ok());
         assert!(result.as_ref().unwrap().is_some());
         assert!(result.unwrap().unwrap().slot == 2);
@@ -512,9 +528,9 @@ mod sqlite_tests {
     async fn it_should_find_current() {
         let storage = mock_sqlite().await;
         let cursor = Cursor::default();
-        storage.set_cursor(&cursor).await.unwrap();
+        storage.set(&cursor).await.unwrap();
 
-        let result = storage.get_cursor().await;
+        let result = storage.current().await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_some());
     }

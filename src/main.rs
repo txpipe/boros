@@ -3,7 +3,7 @@ use std::{env, error::Error, path, sync::Arc};
 use anyhow::Result;
 use dotenv::dotenv;
 use serde::Deserialize;
-use storage::sqlite::{SqliteStorage, SqliteTransaction};
+use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -28,12 +28,13 @@ async fn main() -> Result<()> {
 
     let config = Config::new().expect("invalid config file");
 
-    let storage = SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?;
+    let storage = Arc::new(SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?);
     storage.migrate().await?;
 
-    let tx_storage = Arc::new(SqliteTransaction::new(storage));
+    let tx_storage = Arc::new(SqliteTransaction::new(storage.clone()));
+    let cursor_storage = Arc::new(SqliteCursor::new(storage.clone()));
 
-    let pipeline = pipeline::run(config.clone(), tx_storage.clone());
+    let pipeline = pipeline::run(config.clone(), tx_storage.clone(), cursor_storage.clone());
     let server = server::run(config.server, tx_storage.clone());
 
     try_join!(pipeline, server)?;

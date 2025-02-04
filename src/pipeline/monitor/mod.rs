@@ -5,7 +5,10 @@ use gasket::framework::*;
 use pallas::interop::utxorpc::spec::cardano::Tx;
 use tracing::info;
 
-use crate::storage::{sqlite::SqliteTransaction, TransactionStatus};
+use crate::storage::{
+    sqlite::{SqliteCursor, SqliteTransaction},
+    Cursor, TransactionStatus,
+};
 
 pub mod u5c;
 
@@ -31,15 +34,21 @@ pub trait ChainSyncAdapter {
 #[stage(name = "monitor", unit = "Event", worker = "Worker")]
 pub struct Stage {
     storage: Arc<SqliteTransaction>,
+    cursor: Arc<SqliteCursor>,
     stream: ChainSyncStream,
 }
 impl Stage {
     pub async fn try_new(
         storage: Arc<SqliteTransaction>,
+        cursor: Arc<SqliteCursor>,
         mut adapter: Box<dyn ChainSyncAdapter>,
     ) -> anyhow::Result<Self> {
         let stream = adapter.stream().await?;
-        Ok(Self { storage, stream })
+        Ok(Self {
+            storage,
+            cursor,
+            stream,
+        })
     }
 }
 
@@ -60,11 +69,12 @@ impl gasket::framework::Worker<Stage> for Worker {
     }
 
     async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
-        match unit {
-            Event::RollForward((slot, _), txs) => {
+        let (slot, hash) = match unit {
+            Event::RollForward((slot, hash), txs) => {
                 // TODO: validate slot tx "timeout"
                 // TODO: change tx to rejected when reach the quantity of attempts.
                 //       fanout will try N quantity
+                //       send to pending again
 
                 // TODO: analyse possible problem with the query to get all inflight data
                 let txs_in_flight = stage
@@ -89,11 +99,11 @@ impl gasket::framework::Worker<Stage> for Worker {
                     .await
                     .or_retry()?;
 
-                info!("RollForward {} txs", txs.len())
-            }
-            Event::Rollback((slot, _hash)) => {
-                info!("Rollback slot {slot}");
+                info!("Slot {slot} RollForward {} transactions", txs.len());
 
+                (slot, hash)
+            }
+            Event::Rollback((slot, hash)) => {
                 let txs = stage.storage.find_to_rollback(*slot).await.or_retry()?;
 
                 let txs = txs
@@ -112,9 +122,17 @@ impl gasket::framework::Worker<Stage> for Worker {
 
                 stage.storage.update_batch(&txs).await.or_retry()?;
 
-                info!("{} txs updated", txs.len());
+                info!("Slot {slot} Rollback {} transactions", txs.len());
+
+                (slot, hash)
             }
         };
+
+        stage
+            .cursor
+            .set(&Cursor::new(*slot, hash.to_vec()))
+            .await
+            .or_retry()?;
 
         Ok(())
     }

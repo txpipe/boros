@@ -1,9 +1,10 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use async_stream::stream;
 use futures::TryStreamExt;
 use pallas::interop::utxorpc::spec::sync::{
-    any_chain_block, follow_tip_response, sync_service_client::SyncServiceClient, FollowTipRequest,
+    any_chain_block, follow_tip_response, sync_service_client::SyncServiceClient, BlockRef,
+    FollowTipRequest,
 };
 use serde::Deserialize;
 use tonic::{
@@ -13,17 +14,21 @@ use tonic::{
 };
 use tracing::info;
 
+use crate::storage::sqlite::SqliteCursor;
+
 use super::{ChainSyncAdapter, ChainSyncStream, Event};
 
 pub struct UtxoChainSyncAdapter {
     url: String,
     metadata: HashMap<String, String>,
+    cursor: Arc<SqliteCursor>,
 }
 impl UtxoChainSyncAdapter {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, cursor: Arc<SqliteCursor>) -> Self {
         Self {
             url: config.uri,
             metadata: config.metadata,
+            cursor,
         }
     }
 }
@@ -52,9 +57,25 @@ impl ChainSyncAdapter for UtxoChainSyncAdapter {
 
                 Ok(req)
             });
-        let request = tonic::Request::new(FollowTipRequest {
-            ..Default::default()
-        });
+
+        let follow_tip_request = match self.cursor.current().await? {
+            Some(cursor) => {
+                info!("U5C starting from slot {}", cursor.slot);
+                FollowTipRequest {
+                    intersect: vec![BlockRef {
+                        index: cursor.slot,
+                        hash: cursor.hash.into(),
+                    }],
+                    ..Default::default()
+                }
+            }
+            None => {
+                info!("U5C starting from tip");
+                FollowTipRequest::default()
+            }
+        };
+
+        let request = tonic::Request::new(follow_tip_request);
 
         let response = client.follow_tip(request).await?;
         let mut tip_stream = response.into_inner();
@@ -81,8 +102,8 @@ impl ChainSyncAdapter for UtxoChainSyncAdapter {
                                 },
                             }
                         },
-                        follow_tip_response::Action::Reset(block_ref) => {
-                            dbg!("reset not implemented yet", block_ref);
+                        follow_tip_response::Action::Reset(_block_ref) => {
+                            info!("U5C reset not implemented yet");
                         },
                     }
                 }

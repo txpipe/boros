@@ -3,18 +3,30 @@ use std::sync::Arc;
 use anyhow::Result;
 use monitor::u5c::UtxoChainSyncAdapter;
 
-use crate::{storage::sqlite::SqliteTransaction, Config};
+use crate::{
+    storage::sqlite::{SqliteCursor, SqliteTransaction},
+    Config,
+};
 
 pub mod fanout;
 pub mod ingest;
 pub mod monitor;
 
-pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<()> {
+pub async fn run(
+    config: Config,
+    tx_storage: Arc<SqliteTransaction>,
+    cursor_storage: Arc<SqliteCursor>,
+) -> Result<()> {
     let ingest = ingest::Stage::new(tx_storage.clone());
     let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
 
-    let adapter = UtxoChainSyncAdapter::new(config.monitor);
-    let monitor = monitor::Stage::try_new(tx_storage.clone(), Box::new(adapter)).await?;
+    let adapter = UtxoChainSyncAdapter::new(config.monitor, cursor_storage.clone());
+    let monitor = monitor::Stage::try_new(
+        tx_storage.clone(),
+        cursor_storage.clone(),
+        Box::new(adapter),
+    )
+    .await?;
 
     let policy: gasket::runtime::Policy = Default::default();
 
