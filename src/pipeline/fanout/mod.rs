@@ -6,7 +6,10 @@ use tokio::time::sleep;
 use tracing::info;
 use tx_submit_peer_manager::TxSubmitPeerManager;
 
-use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
+use crate::{
+    ledger::u5c::U5cDataAdapter,
+    storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
+};
 
 pub mod mempool;
 pub mod tx_submit_peer;
@@ -15,13 +18,21 @@ pub mod tx_submit_peer_manager;
 #[derive(Stage)]
 #[stage(name = "fanout", unit = "Transaction", worker = "Worker")]
 pub struct Stage {
-    storage: Arc<SqliteTransaction>,
     config: PeerManagerConfig,
+    adapter: Arc<dyn U5cDataAdapter>,
+    storage: Arc<SqliteTransaction>,
 }
-
 impl Stage {
-    pub fn new(storage: Arc<SqliteTransaction>, config: PeerManagerConfig) -> Self {
-        Self { storage, config }
+    pub fn new(
+        config: PeerManagerConfig,
+        adapter: Arc<dyn U5cDataAdapter>,
+        storage: Arc<SqliteTransaction>,
+    ) -> Self {
+        Self {
+            config,
+            adapter,
+            storage,
+        }
     }
 }
 
@@ -68,11 +79,15 @@ impl gasket::framework::Worker<Stage> for Worker {
         let mut transaction = unit.clone();
         info!("fanout {}", transaction.id);
 
+        let tip = stage.adapter.fetch_tip().await.or_retry()?;
+
         self.tx_submit_peer_manager
             .add_tx(transaction.raw.clone())
             .await;
 
         transaction.status = TransactionStatus::InFlight;
+        transaction.slot = Some(tip.0);
+
         stage.storage.update(&transaction).await.or_retry()?;
 
         Ok(())

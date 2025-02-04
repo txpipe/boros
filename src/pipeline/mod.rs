@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use monitor::u5c::UtxoChainSyncAdapter;
 
 use crate::{
-    storage::sqlite::{SqliteCursor, SqliteTransaction},
+    ledger::u5c::{Point, U5cDataAdapterImpl},
+    storage::{
+        sqlite::{SqliteCursor, SqliteTransaction},
+        Cursor,
+    },
     Config,
 };
 
@@ -17,16 +20,18 @@ pub async fn run(
     tx_storage: Arc<SqliteTransaction>,
     cursor_storage: Arc<SqliteCursor>,
 ) -> Result<()> {
-    let ingest = ingest::Stage::new(tx_storage.clone());
-    let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
+    let cursor = cursor_storage.current().await?.map(|c| c.into());
+    let adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
-    let adapter = UtxoChainSyncAdapter::new(config.monitor, cursor_storage.clone());
-    let monitor = monitor::Stage::try_new(
+    let ingest = ingest::Stage::new(tx_storage.clone());
+    let fanout = fanout::Stage::new(config.peer_manager, adapter.clone(), tx_storage.clone());
+
+    let monitor = monitor::Stage::new(
+        config.monitor,
+        adapter.clone(),
         tx_storage.clone(),
         cursor_storage.clone(),
-        Box::new(adapter),
-    )
-    .await?;
+    );
 
     let policy: gasket::runtime::Policy = Default::default();
 
@@ -38,4 +43,10 @@ pub async fn run(
     daemon.block();
 
     Ok(())
+}
+
+impl From<Cursor> for Point {
+    fn from(value: Cursor) -> Self {
+        (value.slot, value.hash)
+    }
 }

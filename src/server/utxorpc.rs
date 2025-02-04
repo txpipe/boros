@@ -54,7 +54,7 @@ impl submit_service_server::SubmitService for SubmitServiceImpl {
             }
         }
 
-        let hashes_str: Vec<String> = hashes.iter().map(|x| hex::encode(x)).collect();
+        let hashes_str: Vec<String> = hashes.iter().map(hex::encode).collect();
         info!(?hashes_str, "submitting txs");
 
         self.tx_storage.create(&txs).await.map_err(|error| {

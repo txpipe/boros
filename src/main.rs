@@ -8,10 +8,10 @@ use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod ledger;
 mod pipeline;
 mod server;
 mod storage;
-mod ledger;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -48,7 +48,8 @@ struct Config {
     server: server::Config,
     storage: storage::Config,
     peer_manager: pipeline::fanout::PeerManagerConfig,
-    monitor: pipeline::monitor::u5c::Config,
+    monitor: pipeline::monitor::Config,
+    u5c: ledger::u5c::Config,
 }
 
 impl Config {
