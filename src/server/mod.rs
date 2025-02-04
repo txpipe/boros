@@ -23,7 +23,10 @@ pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<(
         let submit_service =
             u5c::submit::submit_service_server::SubmitServiceServer::new(submit_service);
 
-        info!(address = config.listen_address.to_string(), "GRPC server running");
+        info!(
+            address = config.listen_address.to_string(),
+            "GRPC server running"
+        );
 
         let result = Server::builder()
             .add_service(reflection)

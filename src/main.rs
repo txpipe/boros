@@ -47,6 +47,7 @@ struct Config {
     server: server::Config,
     storage: storage::Config,
     peer_manager: pipeline::fanout::PeerManagerConfig,
+    monitor: pipeline::monitor::u5c::Config,
 }
 
 impl Config {
