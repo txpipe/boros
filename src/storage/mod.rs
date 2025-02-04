@@ -16,6 +16,7 @@ pub struct Transaction {
     pub raw: Vec<u8>,
     pub status: TransactionStatus,
     pub priority: TransactionPriority,
+    pub slot: Option<u64>,
     pub dependencies: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -27,6 +28,7 @@ impl Transaction {
             raw,
             status: TransactionStatus::Pending,
             priority: TransactionPriority::Low,
+            slot: None,
             dependencies: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -69,6 +71,7 @@ pub enum TransactionStatus {
     Pending,
     Validated,
     InFlight,
+    Confirmed,
 }
 impl FromStr for TransactionStatus {
     type Err = anyhow::Error;
@@ -78,6 +81,7 @@ impl FromStr for TransactionStatus {
             "pending" => Ok(Self::Pending),
             "validated" => Ok(Self::Validated),
             "inflight" => Ok(Self::InFlight),
+            "confirmed" => Ok(Self::Confirmed),
             _ => Err(anyhow::Error::msg("transaction status not supported")),
         }
     }
@@ -88,6 +92,7 @@ impl Display for TransactionStatus {
             Self::Pending => write!(f, "pending"),
             Self::Validated => write!(f, "validated"),
             Self::InFlight => write!(f, "inflight"),
+            Self::Confirmed => write!(f, "confirmed"),
         }
     }
 }
@@ -103,6 +108,7 @@ mod tests {
                 raw: "hex".into(),
                 status: TransactionStatus::Pending,
                 priority: TransactionPriority::Low,
+                slot: None,
                 dependencies: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),

@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::Duration
-};
+use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
 use serde::Deserialize;
@@ -94,7 +91,7 @@ pub struct PeerManagerConfig {
 pub mod mock_ouroboros_tx_submit_server;
 
 #[cfg(test)]
-mod tests {
+mod fanout_tests {
     use std::{sync::Arc, time::Duration};
 
     use hex::decode;

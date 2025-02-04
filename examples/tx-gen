@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Preview network
+NETWORK_MAGIC=2
+BOROS_RPC="localhost:50052"
+
+if [ ! -e "./cardano-cli" ]; then
+  echo "make sure to have cardano-cli in the tx-gen path"
+  exit 1
+fi
+
+if [ ! -e "$CARDANO_NODE_SOCKET_PATH" ]; then
+  echo "set the env CARDANO_NODE_SOCKET_PATH"
+  exit 1
+fi
+
+if [ ! -f "payment.skey" ]; then
+  echo "creating payment keys"
+  ./cardano-cli address key-gen --verification-key-file payment.vkey --signing-key-file payment.skey
+fi
+
+if [ ! -f "payment.addr" ]; then
+  echo "creating payment addr"
+  ./cardano-cli address build --payment-verification-key-file payment.vkey --out-file payment.addr --testnet-magic $NETWORK_MAGIC
+fi
+
+ADDRESS=$(< payment.addr)
+
+echo "address: $ADDRESS"
+
+UTXO=$(./cardano-cli query utxo --address $ADDRESS --testnet-magic $NETWORK_MAGIC --output-json | jq -r 'to_entries | .[0].key')
+
+if [ -z "$UTXO" ] || [ "$UTXO" == "null" ]; then
+    echo "no balance yet. For testnet, request fund in the faucet"
+    exit 1
+fi
+
+echo "utxo: $UTXO"
+
+./cardano-cli latest transaction build --tx-in $UTXO --change-address $ADDRESS --testnet-magic $NETWORK_MAGIC --out-file tx.raw
+
+./cardano-cli latest transaction sign --tx-body-file tx.raw --signing-key-file payment.skey --out-file tx.signed
+
+CBOR=$(cat ./tx.signed | jq -r '.cborHex')
+
+echo "signed tx cbor: $CBOR"
+
+grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\"}]}" $BOROS_RPC utxorpc.v1alpha.submit.SubmitService.SubmitTx

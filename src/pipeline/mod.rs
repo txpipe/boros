@@ -14,7 +14,7 @@ pub async fn run(config: Config, tx_storage: Arc<SqliteTransaction>) -> Result<(
     let fanout = fanout::Stage::new(tx_storage.clone(), config.peer_manager);
 
     let adapter = UtxoChainSyncAdapter::new(config.monitor);
-    let monitor = monitor::Stage::try_new(Box::new(adapter)).await?;
+    let monitor = monitor::Stage::try_new(tx_storage.clone(), Box::new(adapter)).await?;
 
     let policy: gasket::runtime::Policy = Default::default();
 

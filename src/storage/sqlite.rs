@@ -53,7 +53,7 @@ impl FromRow<'_, SqliteRow> for Transaction {
             priority: priority
                 .try_into()
                 .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
-
+            slot: row.try_get("slot")?,
             dependencies: None,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
@@ -122,6 +122,58 @@ impl SqliteTransaction {
         Ok(())
     }
 
+    pub async fn find(&self, status: TransactionStatus) -> Result<Vec<Transaction>> {
+        let transactions = sqlx::query_as::<_, Transaction>(
+            r#"
+                    SELECT
+                    	id,
+                    	raw,
+                    	status,
+                        slot,
+                    	priority,
+                    	created_at,
+                    	updated_at
+                    FROM
+                    	tx
+                    WHERE
+                    	tx.status = $1;
+            "#,
+        )
+        .bind(status.to_string())
+        .fetch_all(&self.sqlite.db)
+        .await?;
+
+        Ok(transactions)
+    }
+
+    pub async fn find_to_rollback(&self, slot: u64) -> Result<Vec<Transaction>> {
+        let status = TransactionStatus::Confirmed.to_string();
+        let slot = slot as i64;
+
+        let transactions = sqlx::query_as::<_, Transaction>(
+            r#"
+                    SELECT
+                    	id,
+                    	raw,
+                    	status,
+                        slot,
+                    	priority,
+                    	created_at,
+                    	updated_at
+                    FROM
+                    	tx
+                    WHERE
+	                    tx.status = $1 AND tx.slot > $2;
+            "#,
+        )
+        .bind(status)
+        .bind(slot)
+        .fetch_all(&self.sqlite.db)
+        .await?;
+
+        Ok(transactions)
+    }
+
     pub async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
         let transaction = sqlx::query_as::<_, Transaction>(
             r#"
@@ -129,6 +181,7 @@ impl SqliteTransaction {
                     	id,
                     	raw,
                     	status,
+                        slot,
                     	priority,
                     	created_at,
                     	updated_at
@@ -152,6 +205,8 @@ impl SqliteTransaction {
     pub async fn update(&self, tx: &Transaction) -> Result<()> {
         let status = tx.status.to_string();
         let updated_at = Utc::now();
+        // TODO: check the maximium size of i64 and compare with cardano slot.
+        let slot = tx.slot.map(|v| v as i64);
 
         sqlx::query!(
             r#"
@@ -160,12 +215,14 @@ impl SqliteTransaction {
                 SET
                 	raw = $1,
                 	status = $2,
-                	updated_at = $3
+                	slot = $3,
+                	updated_at = $4
                 WHERE
-                	id = $4;
+                	id = $5;
             "#,
             tx.raw,
             status,
+            slot,
             updated_at,
             tx.id,
         )
@@ -174,10 +231,45 @@ impl SqliteTransaction {
 
         Ok(())
     }
+
+    pub async fn update_batch(&self, txs: &Vec<Transaction>) -> Result<()> {
+        let mut db_tx = self.sqlite.db.begin().await?;
+
+        for tx in txs {
+            let status = tx.status.to_string();
+            let updated_at = Utc::now();
+            // TODO: check the maximium size of i64 and compare with cardano slot.
+            let slot = tx.slot.map(|v| v as i64);
+
+            sqlx::query!(
+                r#"
+                UPDATE
+                	tx
+                SET
+                	raw = $1,
+                	status = $2,
+                	slot = $3,
+                	updated_at = $4
+                WHERE
+                	id = $5;
+            "#,
+                tx.raw,
+                status,
+                slot,
+                updated_at,
+                tx.id,
+            )
+            .execute(&mut *db_tx)
+            .await?;
+        }
+
+        db_tx.commit().await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
-mod tests {
+mod sqlite_tests {
     use crate::storage::{Transaction, TransactionStatus};
 
     use super::{SqliteStorage, SqliteTransaction};
@@ -234,7 +326,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn it_should_update_transaction_valid() {
+    async fn it_should_update_transaction() {
         let storage = mock_sqlite().await;
 
         let transaction = Transaction::default();
@@ -248,5 +340,87 @@ mod tests {
         let result = storage.next(TransactionStatus::Validated).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn it_should_update_batch_transaction() {
+        let storage = mock_sqlite().await;
+
+        let mut batch = Vec::new();
+
+        let mut transaction = Transaction::default();
+        transaction.id = "hex1".into();
+        batch.push(transaction.clone());
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let mut transaction = Transaction::default();
+        transaction.id = "hex2".into();
+        batch.push(transaction.clone());
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let batch = batch
+            .iter_mut()
+            .map(|tx| {
+                tx.status = TransactionStatus::Confirmed;
+                tx.slot = Some(1);
+                tx.clone()
+            })
+            .collect();
+        let result = storage.update_batch(&batch).await;
+        assert!(result.is_ok());
+
+        let result = storage.next(TransactionStatus::Confirmed).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn it_should_find() {
+        let storage = mock_sqlite().await;
+        let transaction = Transaction::default();
+
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let result = storage.find(TransactionStatus::Pending).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().len() == 1);
+    }
+
+    #[tokio::test]
+    async fn it_should_find_to_rollback() {
+        let storage = mock_sqlite().await;
+
+        let transaction = Transaction::default();
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let transaction = Transaction {
+            status: TransactionStatus::Confirmed,
+            slot: Some(5),
+            ..Default::default()
+        };
+        storage.update(&transaction).await.unwrap();
+
+        let result = storage.find_to_rollback(1).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().len() == 1);
+    }
+
+    #[tokio::test]
+    async fn it_should_return_empty_find_to_rollback_when_tx_slot_lower_than_block_slot() {
+        let storage = mock_sqlite().await;
+
+        let transaction = Transaction::default();
+        storage.create(&vec![transaction]).await.unwrap();
+
+        let transaction = Transaction {
+            status: TransactionStatus::Confirmed,
+            slot: Some(5),
+            ..Default::default()
+        };
+        storage.update(&transaction).await.unwrap();
+
+        let result = storage.find_to_rollback(10).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 }
