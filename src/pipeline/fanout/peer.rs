@@ -19,6 +19,7 @@ pub struct Peer {
     peer_addr: String,
     network_magic: u64,
     unfulfilled_request: Arc<RwLock<Option<usize>>>,
+    is_peer_sharing_enabled: bool,
 }
 
 impl Peer {
@@ -29,6 +30,7 @@ impl Peer {
             peer_addr: peer_addr.to_string(),
             network_magic,
             unfulfilled_request: Arc::new(RwLock::new(None)),
+            is_peer_sharing_enabled: false,
         }
     }
 
@@ -52,6 +54,13 @@ impl Peer {
             .unwrap();
 
         self.client = Arc::new(Mutex::new(Some(client)));
+
+        self.is_peer_sharing_enabled = self.is_peer_sharing_enabled().await.map_err(
+            |e| {
+                error!(error=?e, peer=%self.peer_addr, "Failed to get peer sharing status");
+                e
+            },
+        )?;
 
         self.start_background_task();
 
@@ -77,6 +86,26 @@ impl Peer {
         }
 
         Ok(discovered)
+    }
+
+    pub async fn is_peer_sharing_enabled(&self) -> Result<bool, Error> {
+        let version_table = PeerClient::query(&self.peer_addr, self.network_magic).await.unwrap();
+        info!(peer=%self.peer_addr, "Received version table: {:?}", version_table);
+        let version_data = version_table.values.iter()
+                        .max_by_key(|(version, _)| *version)
+                        .map(|(_, data)| data);
+
+        if let Some(data) = version_data {
+            if Some(1) == data.peer_sharing {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    pub fn get_is_peer_sharing_enabled_field(&self) -> bool {
+        self.is_peer_sharing_enabled
     }
 
     fn start_background_task(&self) {

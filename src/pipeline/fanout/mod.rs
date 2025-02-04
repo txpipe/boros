@@ -139,7 +139,7 @@ mod fanout_tests {
         // wait for server to stop
         tracing::info!("Waiting for server to stop..");
         loop {
-            tokio::time::sleep(Duration::from_millis(1000)).await;
+            tokio::time::sleep(Duration::from_millis(10000)).await;
             let is_done = peer_server.is_done.read().unwrap();
             tracing::info!("Is Server done: {:?}", *is_done);
             if *is_done {
