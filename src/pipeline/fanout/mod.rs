@@ -91,7 +91,7 @@ pub struct PeerManagerConfig {
 pub mod mock_ouroboros_tx_submit_server;
 
 #[cfg(test)]
-mod tests {
+mod fanout_tests {
     use std::{sync::Arc, time::Duration};
 
     use hex::decode;
@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_fanout_stage() {
+    async fn it_should_fanout_stage() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
 
         let peer_server = Arc::new(MockOuroborosTxSubmitPeerServer::new(
@@ -139,7 +139,7 @@ mod tests {
         // wait for server to stop
         tracing::info!("Waiting for server to stop..");
         loop {
-            tokio::time::sleep(Duration::from_millis(1000)).await;
+            tokio::time::sleep(Duration::from_millis(10000)).await;
             let is_done = peer_server.is_done.read().unwrap();
             tracing::info!("Is Server done: {:?}", *is_done);
             if *is_done {

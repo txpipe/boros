@@ -1,8 +1,11 @@
-use std::pin::Pin;
+use std::{pin::Pin, sync::Arc};
 
 use futures::{Stream, TryStreamExt};
 use gasket::framework::*;
+use pallas::interop::utxorpc::spec::cardano::Tx;
 use tracing::info;
+
+use crate::storage::{sqlite::SqliteTransaction, TransactionStatus};
 
 pub mod u5c;
 
@@ -11,7 +14,7 @@ pub mod file;
 
 #[derive(Debug)]
 pub enum Event {
-    RollForward(Vec<u8>),
+    RollForward(u64, Vec<Tx>),
     Rollback(u64, Vec<u8>),
 }
 
@@ -25,12 +28,16 @@ pub trait ChainSyncAdapter {
 #[derive(Stage)]
 #[stage(name = "monitor", unit = "Event", worker = "Worker")]
 pub struct Stage {
+    storage: Arc<SqliteTransaction>,
     stream: ChainSyncStream,
 }
 impl Stage {
-    pub async fn try_new(mut adapter: Box<dyn ChainSyncAdapter>) -> anyhow::Result<Self> {
+    pub async fn try_new(
+        storage: Arc<SqliteTransaction>,
+        mut adapter: Box<dyn ChainSyncAdapter>,
+    ) -> anyhow::Result<Self> {
         let stream = adapter.stream().await?;
-        Ok(Self { stream })
+        Ok(Self { storage, stream })
     }
 }
 
@@ -50,12 +57,61 @@ impl gasket::framework::Worker<Stage> for Worker {
         Ok(WorkSchedule::Idle)
     }
 
-    async fn execute(&mut self, unit: &Event, _stage: &mut Stage) -> Result<(), WorkerError> {
-        info!("monitor");
-
+    async fn execute(&mut self, unit: &Event, stage: &mut Stage) -> Result<(), WorkerError> {
         match unit {
-            Event::RollForward(v) => info!("RollForward {}", hex::encode(v)),
-            Event::Rollback(slot, _hash) => info!("Rollback slot {slot}"),
+            Event::RollForward(slot, txs) => {
+                // TODO: validate slot tx "timeout"
+                // TODO: change tx to rejected when reach the quantity of attempts.
+                //       fanout will try N quantity
+
+                // TODO: analyse possible problem with the query to get all inflight data
+                let txs_in_flight = stage
+                    .storage
+                    .find(TransactionStatus::InFlight)
+                    .await
+                    .or_retry()?;
+
+                let txs_to_confirm = txs_in_flight
+                    .into_iter()
+                    .filter(|itx| txs.iter().any(|tx| hex::encode(&tx.hash) == itx.id))
+                    .map(|mut tx| {
+                        tx.status = TransactionStatus::Confirmed;
+                        tx.slot = Some(*slot);
+                        tx
+                    })
+                    .collect();
+
+                stage
+                    .storage
+                    .update_batch(&txs_to_confirm)
+                    .await
+                    .or_retry()?;
+
+                info!("RollForward {} txs", txs.len())
+            }
+            Event::Rollback(slot, _hash) => {
+                info!("Rollback slot {slot}");
+
+                let txs = stage.storage.find_to_rollback(*slot).await.or_retry()?;
+
+                let txs = txs
+                    .into_iter()
+                    .map(|mut tx| {
+                        if tx.slot.unwrap() > *slot {
+                            tx.status = TransactionStatus::InFlight;
+                            tx.slot = None;
+                            return tx;
+                        }
+
+                        tx.slot = Some(*slot);
+                        tx
+                    })
+                    .collect();
+
+                stage.storage.update_batch(&txs).await.or_retry()?;
+
+                info!("{} txs updated", txs.len());
+            }
         };
 
         Ok(())
