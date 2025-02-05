@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use itertools::Itertools;
-use pallas::codec::minicbor::decode::info;
 use pallas::crypto::hash::Hash;
 use pallas::network::miniprotocols::peersharing::PeerAddress;
 use pallas::network::miniprotocols::txsubmission::{EraTxBody, EraTxId, Request};
