@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
-use peer_manager::{PeerManager, PeerManagerInitConfig};
+use peer_manager::PeerManager;
 use serde::Deserialize;
 use tokio::time::sleep;
 use tracing::info;
@@ -37,11 +37,9 @@ impl gasket::framework::Worker<Stage> for Worker {
 
         info!("Peer Addresses: {:?}", peer_addresses);
 
-        let mut peer_manager = PeerManager::new(2, peer_addresses);
+        let mut peer_manager = PeerManager::new(2, peer_addresses, desired_peer_count);
         peer_manager
-            .init(PeerManagerInitConfig {
-                desired_peers: desired_peer_count,
-            })
+            .init()
             .await
             .unwrap();
 

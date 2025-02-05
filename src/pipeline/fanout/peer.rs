@@ -15,8 +15,8 @@ use super::mempool::{self, Mempool};
 
 pub struct Peer {
     mempool: Arc<Mutex<Mempool>>,
-    client: Arc<Mutex<Option<PeerClient>>>,
     peer_addr: String,
+    client: Arc<Mutex<Option<PeerClient>>>,
     network_magic: u64,
     unfulfilled_request: Arc<RwLock<Option<usize>>>,
     pub is_peer_sharing_enabled: bool,
