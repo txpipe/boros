@@ -27,7 +27,7 @@ rocket = "0.5.1"
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"
 sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
-tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "time"] }
 tonic = { version = "0.12.3", features = ["transport", "tls", "tls-webpki-roots", "tls-roots"] }
 tonic-reflection = "0.12.3"
 tracing = "0.1.41"

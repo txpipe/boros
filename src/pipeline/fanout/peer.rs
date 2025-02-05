@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use itertools::Itertools;
+use pallas::codec::minicbor::decode::info;
 use pallas::crypto::hash::Hash;
 use pallas::network::miniprotocols::peersharing::PeerAddress;
 use pallas::network::miniprotocols::txsubmission::{EraTxBody, EraTxId, Request};
@@ -20,6 +21,7 @@ pub struct Peer {
     network_magic: u64,
     unfulfilled_request: Arc<RwLock<Option<usize>>>,
     pub is_peer_sharing_enabled: bool,
+    pub is_alive: bool,
 }
 
 impl Peer {
@@ -31,35 +33,26 @@ impl Peer {
             network_magic,
             unfulfilled_request: Arc::new(RwLock::new(None)),
             is_peer_sharing_enabled: false,
+            is_alive: false,
         }
     }
 
-    pub async fn init(&mut self) -> Result<(), Error> {
-        self.is_peer_sharing_enabled = self.query_peer_sharing_mode().await.inspect_err(|&e| {
-            error!(error=?e, peer=%self.peer_addr, "Failed to get peer sharing status");
-        })?;
+    pub async fn init(&mut self) -> Result<(), pallas::network::facades::Error> {
+        self.is_peer_sharing_enabled = self.query_peer_sharing_mode().await?;
+        info!(peer=%self.peer_addr, "Peer sharing mode: {}", self.is_peer_sharing_enabled);
 
-        let mut client = PeerClient::connect(&self.peer_addr, self.network_magic)
-            .await
-            .map_err(|e| {
-                error!(error=?e, peer=%self.peer_addr, "Failed to connect to peer");
-                e
-            })
-            .unwrap();
+        let mut client = PeerClient::connect(&self.peer_addr, self.network_magic).await?;
+        info!(peer=%self.peer_addr, "Connected to peer");
 
-        client
-            .txsubmission()
-            .send_init()
-            .await
-            .map_err(|e| {
-                error!(error=?e, peer=%self.peer_addr, "Failed to send init message");
-                e
-            })
-            .unwrap();
+        client.txsubmission().send_init().await.unwrap();
+
+        info!(peer=%self.peer_addr, "Sent init message");
 
         self.client = Arc::new(Mutex::new(Some(client)));
+        self.is_alive = true;
 
         self.start_background_task();
+        info!(peer=%self.peer_addr, "Started background task");
 
         Ok(())
     }
@@ -89,10 +82,9 @@ impl Peer {
         Ok(discovered)
     }
 
-    async fn query_peer_sharing_mode(&self) -> Result<bool, Error> {
-        let version_table = PeerClient::query(&self.peer_addr, self.network_magic)
-            .await
-            .unwrap();
+    async fn query_peer_sharing_mode(&self) -> Result<bool, pallas::network::facades::Error> {
+        let version_table = PeerClient::query(&self.peer_addr, self.network_magic).await?;
+
         info!(peer=%self.peer_addr, "Received version table: {:?}", version_table);
         let version_data = version_table
             .values
