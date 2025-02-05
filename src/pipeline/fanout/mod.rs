@@ -134,12 +134,12 @@ mod tests {
 
         tracing::info!("Tx Hash: {:?}", tx_id);
 
-        // There is a deadlock here, need to debug
         tx_submit_peer_client.add_tx(raw_cbor.clone()).await;
 
         // wait for server to stop
+        tracing::info!("Waiting for server to stop..");
         loop {
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(1000)).await;
             let is_done = peer_server.is_done.read().unwrap();
             tracing::info!("Is Server done: {:?}", *is_done);
             if *is_done {
