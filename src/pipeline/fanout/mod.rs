@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::Duration
+};
 
 use gasket::framework::*;
 use peer_manager::PeerManager;
@@ -12,8 +15,13 @@ pub mod mempool;
 pub mod peer;
 pub mod peer_manager;
 
+pub enum FanoutUnit {
+    Transaction(Transaction),
+    PeerDiscovery(String),
+}
+
 #[derive(Stage)]
-#[stage(name = "fanout", unit = "Transaction", worker = "Worker")]
+#[stage(name = "fanout", unit = "FanoutUnit", worker = "Worker")]
 pub struct Stage {
     storage: Arc<SqliteTransaction>,
     config: PeerManagerConfig,
@@ -27,6 +35,7 @@ impl Stage {
 
 pub struct Worker {
     peer_manager: PeerManager,
+    discovery_queue: Vec<String>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -38,42 +47,48 @@ impl gasket::framework::Worker<Stage> for Worker {
         info!("Peer Addresses: {:?}", peer_addresses);
 
         let mut peer_manager = PeerManager::new(2, peer_addresses, desired_peer_count);
-        peer_manager
-            .init()
-            .await
-            .unwrap();
+        peer_manager.init().await.unwrap();
 
-        Ok(Self { peer_manager })
+        Ok(Self { peer_manager, discovery_queue: vec![] })
     }
 
     async fn schedule(
         &mut self,
         stage: &mut Stage,
-    ) -> Result<WorkSchedule<Transaction>, WorkerError> {
+    ) -> Result<WorkSchedule<FanoutUnit>, WorkerError> {
         if let Some(tx) = stage
             .storage
             .next(TransactionStatus::Validated)
             .await
             .or_retry()?
         {
-            return Ok(WorkSchedule::Unit(tx));
+            return Ok(WorkSchedule::Unit(FanoutUnit::Transaction(tx)));
         }
+
+        if let Some(peer_addr) = self.discovery_queue.drain(0..1).next() {
+            return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(peer_addr)));
+        }
+
 
         sleep(Duration::from_secs(1)).await;
         Ok(WorkSchedule::Idle)
     }
 
-    async fn execute(&mut self, unit: &Transaction, stage: &mut Stage) -> Result<(), WorkerError> {
-        let mut transaction = unit.clone();
-        info!("fanout {}", transaction.id);
-
-        // extract cbor from unit and pass it to tx_submit_peer_manager
-        // comment out for now until we have a proper tx to submit
-        self.peer_manager.add_tx(transaction.raw.clone()).await;
-
-        transaction.status = TransactionStatus::InFlight;
-        stage.storage.update(&transaction).await.or_retry()?;
-
+    async fn execute(&mut self, unit: &FanoutUnit, stage: &mut Stage) -> Result<(), WorkerError> {
+        match unit {
+            FanoutUnit::Transaction(tx) => {
+                let mut transaction = tx.clone();
+                info!("Processing Transaction: {}", transaction.id);
+                // For a transaction unit, forward the raw tx bytes to the peer manager for txsubmission.
+                self.peer_manager.add_tx(transaction.raw.clone()).await;
+                transaction.status = TransactionStatus::InFlight;
+                stage.storage.update(&transaction).await.or_retry()?;
+            }
+            FanoutUnit::PeerDiscovery(_) => {
+                info!("Processing PeerSharing unit: Discovering new peers");
+                self.peer_manager.discover_peers().await;
+            }
+        }
         Ok(())
     }
 }
@@ -82,6 +97,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 pub struct PeerManagerConfig {
     peers: Vec<String>,
     desired_peer_count: u8,
+    peers_per_request: u8,
 }
 
 // Test for Fanout Stage

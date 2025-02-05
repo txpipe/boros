@@ -4,9 +4,12 @@ use std::fmt::Error;
 use std::time::Duration;
 
 use pallas::network::miniprotocols::peersharing::PeerAddress;
+use rand::seq::IndexedRandom;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::info;
+
+use crate::pipeline::fanout::peer;
 
 use super::peer::Peer;
 
@@ -42,6 +45,31 @@ impl PeerManager {
         self.discover_peers().await;
 
         Ok(())
+    }
+
+    pub async fn select_peer_for_discovery(&self) -> Option<String> {
+        let peers = self.peers.read().await;
+        let connected_peers: Vec<String> = peers
+            .iter()
+            .filter_map(|(addr, peer_opt)| {
+                if let Some(peer) = peer_opt {
+                    if peer.is_alive {
+                        Some(addr.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if connected_peers.is_empty() {
+            None
+        } else {
+            let mut rng = rand::rng();
+            connected_peers.choose(&mut rng).cloned()
+        }
     }
 
     pub async fn discover_peers(&mut self) {
@@ -95,7 +123,11 @@ impl PeerManager {
 
                 // Wrap the init future with a timeout of 5 seconds.
                 let connected = match timeout(Duration::from_secs(5), new_peer.init()).await {
-                    Ok(_) => true, // The init future completed in time.
+                    Ok(Ok(())) => true, // The init future completed in time.
+                    Ok(Err(e)) => {
+                        info!("Peer initialization error for {}: {:?}", key, e);
+                        false
+                    },
                     Err(_) => {
                         // Timeout occurred.
                         info!("Peer connection timed out: {}", key);
@@ -112,6 +144,17 @@ impl PeerManager {
                 }
             }
         }
+    }
+
+    pub async fn connected_peers_count(&self) -> usize {
+        let peers = self.peers.read().await;
+        peers
+            .iter()
+            .filter(|(_, peer)| match *peer {
+                Some(peer) => peer.is_alive,
+                None => false,
+            })
+            .count()
     }
 
     pub async fn add_tx(&self, tx: Vec<u8>) {

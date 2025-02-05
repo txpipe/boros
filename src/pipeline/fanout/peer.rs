@@ -65,7 +65,7 @@ impl Peer {
                 return Err(Error);
             }
         };
-
+        
         client
             .peersharing()
             .send_share_request(desired_peers)
@@ -82,7 +82,7 @@ impl Peer {
     }
 
     async fn query_peer_sharing_mode(&self) -> Result<bool, pallas::network::facades::Error> {
-        let version_table = PeerClient::query(&self.peer_addr, self.network_magic).await?;
+        let version_table = PeerClient::handshake_query(&self.peer_addr, self.network_magic).await?;
 
         info!(peer=%self.peer_addr, "Received version table: {:?}", version_table);
         let version_data = version_table
