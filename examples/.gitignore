@@ -1,2 +1,5 @@
 payment.*
 cardano-cli
+
+tx.raw
+tx.signed

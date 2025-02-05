@@ -97,6 +97,17 @@ impl Display for TransactionStatus {
     }
 }
 
+#[derive(Clone)]
+pub struct Cursor {
+    pub slot: u64,
+    pub hash: Vec<u8>,
+}
+impl Cursor {
+    pub fn new(slot: u64, hash: Vec<u8>) -> Self {
+        Self { slot, hash }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +123,15 @@ mod tests {
                 dependencies: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
+            }
+        }
+    }
+
+    impl Default for Cursor {
+        fn default() -> Self {
+            Self {
+                slot: 1,
+                hash: "hex".into(),
             }
         }
     }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT OR REPLACE INTO cursor(\n                    id,\n\t                slot,\n\t                hash\n                )\n                VALUES (0, $1, $2);\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "dac0b9f3cec7e49d54f474e39dbedc421915839748fa84bea7ad96b2722bc935"
+}

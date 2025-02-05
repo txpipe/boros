@@ -11,7 +11,12 @@ peers = [
 ]
 
 [monitor]
+# old tx inflight will be retried when reach a value bigger than retry_slot_diff
+retry_slot_diff = 1000
+
+[u5c]
 uri = "https://mainnet.utxorpc-v0.demeter.run"
 
-[monitor.metadata]
+# metadata is optional
+[u5c.metadata]
 "dmtr-api-key" = "your key"
