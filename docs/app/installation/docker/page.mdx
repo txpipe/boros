@@ -1,0 +1,23 @@
+---
+title: Docker - Boros
+sidebarTitle: Docker
+asIndexPage: true
+---
+
+# Docker
+
+Boros provides already built public Docker image through Github Package. To execute Boros via Docker, use the following command:
+
+```sh
+docker run ghcr.io/txpipe/boros:latest
+```
+
+## Configuration
+
+The default configuration file for Boros is located in `/etc/boros/config.toml` or the env `BOROS_CONFIG` can be used to set the path of the config file. The following example runs a docker container using a configuration file named `config.toml` located in the current folder.
+
+Create a file `config.toml` following the [configuration](../configuration)
+
+```sh
+docker run -v $(pwd)/config.toml:/etc/boros/config.toml ghcr.io/txpipe/boros:latest
+```

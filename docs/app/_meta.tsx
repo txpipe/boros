@@ -1,4 +1,6 @@
 export default {
-  index: '',
-  design: '',
+  "index": "Introduction",
+  "installation": "Installation",
+  "configuration": "Configuration",
+  "design": "Design",
 };
