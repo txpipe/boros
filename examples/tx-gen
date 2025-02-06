@@ -2,7 +2,7 @@
 
 # Preview network
 NETWORK_MAGIC=2
-BOROS_RPC="localhost:50052"
+BOROS_RPC="0.0.0.0:50052"
 
 if [ ! -e "./cardano-cli" ]; then
   echo "make sure to have cardano-cli in the tx-gen path"

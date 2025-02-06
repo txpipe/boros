@@ -19,5 +19,5 @@ The default configuration file for Boros is located in `/etc/boros/config.toml` 
 Create a file `config.toml` following the [configuration](../configuration)
 
 ```sh
-docker run -v $(pwd)/config.toml:/etc/boros/config.toml ghcr.io/txpipe/boros:latest
+docker run -v $(pwd)/config.toml:/etc/boros/config.toml -p 50052:50052 ghcr.io/txpipe/boros:latest
 ```
