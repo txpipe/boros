@@ -1,5 +1,4 @@
-
 export default {
-  "from_source": "From Source",
-  "docker": "Docker",
+  from_source: 'From Source',
+  docker: 'Docker',
 };
