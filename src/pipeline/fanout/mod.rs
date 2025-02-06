@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use gasket::framework::*;
 use peer_manager::PeerManager;
@@ -43,11 +39,11 @@ pub struct Worker {
 impl gasket::framework::Worker<Stage> for Worker {
     async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
         let peer_addresses = stage.config.peers.clone();
-        let desired_peer_count = stage.config.desired_peer_count;
+        let peers_per_request = stage.config.peers_per_request;
 
         info!("Peer Addresses: {:?}", peer_addresses);
 
-        let mut peer_manager = PeerManager::new(2, peer_addresses, desired_peer_count);
+        let mut peer_manager = PeerManager::new(2, peer_addresses, peers_per_request);
         peer_manager.init().await.unwrap();
 
         Ok(Self {
@@ -69,6 +65,17 @@ impl gasket::framework::Worker<Stage> for Worker {
             return Ok(WorkSchedule::Unit(FanoutUnit::Transaction(tx)));
         }
 
+        if self.discovery_queue.len() < stage.config.peers_per_request as usize {
+            if let Ok(Some(discovered_peer)) = self
+                .peer_manager
+                .pick_peer_rand()
+                .await
+            {
+                info!("Discovered Peer from Peer Manager: {}", discovered_peer);
+                self.discovery_queue.push_back(discovered_peer.clone());
+            }
+        }
+
         if let Some(peer_addr) = self.discovery_queue.pop_front() {
             return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(peer_addr)));
         }
@@ -78,20 +85,6 @@ impl gasket::framework::Worker<Stage> for Worker {
         {
             sleep(Duration::from_secs(1)).await;
             return Ok(WorkSchedule::Idle);
-        }
-
-        if self.discovery_queue.len() < stage.config.peers_per_request as usize {
-            let already_queued = self.discovery_queue.iter().cloned().collect();
-
-            if let Some(peer_addr) = self
-                .peer_manager
-                .pick_peer_rand(&already_queued)
-                .await
-            {
-                // Add the peer to the discovery queue
-                self.discovery_queue.push_back(peer_addr.clone());
-                return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(peer_addr)));
-            }
         }
 
         sleep(Duration::from_secs(1)).await;
@@ -110,7 +103,7 @@ impl gasket::framework::Worker<Stage> for Worker {
             }
             FanoutUnit::PeerDiscovery(peer_addr) => {
                 info!("Processing PeerSharing unit: Discovering new peers");
-                self.peer_manager.discover_peers(peer_addr).await;
+                self.peer_manager.init_discovered_peer(peer_addr).await;
             }
         }
         Ok(())
