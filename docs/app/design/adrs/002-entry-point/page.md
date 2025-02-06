@@ -1,3 +1,8 @@
+---
+title: Entry point - Boros Docs
+sidebarTitle: Entry point
+---
+
 # Decision to choose an entry point server
 
 **status**: draft
