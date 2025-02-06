@@ -7,6 +7,8 @@
     "dev": "next --turbopack",
     "build": "next build",
     "start": "next start",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "lint:fix": "eslint . --fix",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
