@@ -15,10 +15,10 @@ use super::mempool::{self, Mempool};
 
 pub struct Peer {
     mempool: Arc<Mutex<Mempool>>,
-    peer_addr: String,
     client: Arc<Mutex<Option<PeerClient>>>,
     network_magic: u64,
     unfulfilled_request: Arc<RwLock<Option<usize>>>,
+    pub peer_addr: String,
     pub is_peer_sharing_enabled: bool,
     pub is_alive: bool,
 }

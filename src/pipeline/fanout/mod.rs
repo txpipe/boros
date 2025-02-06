@@ -32,23 +32,22 @@ impl Stage {
 
 pub struct Worker {
     peer_manager: PeerManager,
-    discovery_queue: VecDeque<String>,
+    peer_discovery_queue: u8,
 }
 
 #[async_trait::async_trait(?Send)]
 impl gasket::framework::Worker<Stage> for Worker {
     async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
         let peer_addresses = stage.config.peers.clone();
-        let peers_per_request = stage.config.peers_per_request;
 
-        info!("Peer Addresses: {:?}", peer_addresses);
+        info!("Bootstrap Peer Addresses: {:?}", peer_addresses);
 
-        let mut peer_manager = PeerManager::new(2, peer_addresses, peers_per_request);
+        let mut peer_manager = PeerManager::new(2, peer_addresses);
         peer_manager.init().await.unwrap();
 
         Ok(Self {
             peer_manager,
-            discovery_queue: VecDeque::new(),
+            peer_discovery_queue: 0,
         })
     }
 
@@ -56,6 +55,9 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<FanoutUnit>, WorkerError> {
+
+        let peers_per_request = stage.config.peers_per_request;
+
         if let Some(tx) = stage
             .storage
             .next(TransactionStatus::Validated)
@@ -65,19 +67,14 @@ impl gasket::framework::Worker<Stage> for Worker {
             return Ok(WorkSchedule::Unit(FanoutUnit::Transaction(tx)));
         }
 
-        if self.discovery_queue.len() < stage.config.peers_per_request as usize {
-            if let Ok(Some(discovered_peer)) = self
-                .peer_manager
-                .pick_peer_rand()
-                .await
-            {
+        if self.peer_discovery_queue < stage.config.peers_per_request {
+            if let Ok(Some(discovered_peer)) = self.peer_manager.pick_peer_rand(peers_per_request).await {
                 info!("Discovered Peer from Peer Manager: {}", discovered_peer);
-                self.discovery_queue.push_back(discovered_peer.clone());
+                self.peer_discovery_queue += 1;
+                return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(
+                    discovered_peer,
+                )));
             }
-        }
-
-        if let Some(peer_addr) = self.discovery_queue.pop_front() {
-            return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(peer_addr)));
         }
 
         if self.peer_manager.connected_peers_count().await
@@ -103,7 +100,8 @@ impl gasket::framework::Worker<Stage> for Worker {
             }
             FanoutUnit::PeerDiscovery(peer_addr) => {
                 info!("Processing PeerSharing unit: Discovering new peers");
-                self.peer_manager.init_discovered_peer(peer_addr).await;
+                self.peer_manager.add_peer(peer_addr).await;
+                self.peer_discovery_queue -= 1;
             }
         }
         Ok(())

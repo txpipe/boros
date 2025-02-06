@@ -4,7 +4,7 @@ use std::fmt::Error;
 use std::time::Duration;
 
 use pallas::network::miniprotocols::peersharing::PeerAddress;
-use rand::seq::{IndexedRandom, SliceRandom};
+use rand::seq::{IndexedMutRandom, IndexedRandom, SliceRandom};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::info;
@@ -14,11 +14,10 @@ use super::peer::Peer;
 pub struct PeerManager {
     network_magic: u64,
     peers: RwLock<HashMap<String, Option<Peer>>>,
-    peers_per_request: u8,
 }
 
 impl PeerManager {
-    pub fn new(network_magic: u64, peer_addresses: Vec<String>, peers_per_request: u8) -> Self {
+    pub fn new(network_magic: u64, peer_addresses: Vec<String>) -> Self {
         PeerManager {
             network_magic,
             peers: RwLock::new(
@@ -27,7 +26,6 @@ impl PeerManager {
                     .map(|peer_addr| (peer_addr, None))
                     .collect(),
             ),
-            peers_per_request,
         }
     }
 
@@ -43,15 +41,18 @@ impl PeerManager {
         Ok(())
     }
 
-    pub async fn pick_peer_rand(&self) -> Result<Option<String>, Error> {
-        let peers = self.peers.read().await;
+    pub async fn pick_peer_rand(&self, desired_peers: u8) -> Result<Option<String>, Error> {
+        // Acquire a write lock so we can obtain mutable references.
+        let mut peers = self.peers.write().await;
+        let mut rng = rand::rng();
 
-        let candidates: Vec<String> = peers
-            .iter()
-            .filter_map(|(addr, peer_opt)| {
+        // Build a vector of mutable references to candidate peers.
+        let mut candidates: Vec<&mut Peer> = peers
+            .iter_mut()
+            .filter_map(|(_, peer_opt)| {
                 if let Some(peer) = peer_opt {
                     if peer.is_alive && peer.is_peer_sharing_enabled {
-                        Some(addr.clone())
+                        Some(peer)
                     } else {
                         None
                     }
@@ -61,65 +62,41 @@ impl PeerManager {
             })
             .collect();
 
-        let random_peer = candidates.choose(&mut rand::rng()).cloned();
+        // Use `choose_mut` on the mutable slice of candidates.
+        // This returns an Option<&mut &mut Peer>.
+        if let Some(peer_ref) = candidates.as_mut_slice().choose_mut(&mut rng) {
+            // Use `*peer_ref` to dereference the extra layer.
+            // This gives you a `&mut Peer` which can be used to call mutable methods.
+            info!("Picked random peer: {}", peer_ref.peer_addr);
 
-        if let Some(peer_addr) = random_peer {
-            info!("Picked random peer: {}", peer_addr);
-
-            let random_discovered_peer = self.discover_peers(peer_addr).await?;
-            info!("Random peer discovered: {:?}", random_discovered_peer);
-            return Ok(random_discovered_peer);
+            let sub_peers = (*peer_ref).discover_peers(desired_peers).await;
+            match sub_peers {
+                Ok(sub_peers) => {
+                    let sub_peers: Vec<String> = sub_peers
+                        .into_iter()
+                        // @todo: Extend support to include IPv6 addresses. For now we only care about IPv4 peers.
+                        .filter(|addr| matches!(addr, PeerAddress::V4(_, _)))
+                        .map(|addr| match addr {
+                            PeerAddress::V4(ip, port) => format!("{}:{}", ip, port),
+                            _ => unreachable!(),
+                        })
+                        .collect();
+                    info!("Discovered peers: {:?}", sub_peers);
+                    // For picking a random discovered peer, the regular `choose` works since we
+                    // don't need to mutate the string.
+                    return Ok(sub_peers.choose(&mut rng).cloned());
+                }
+                Err(e) => {
+                    info!("Failed to discover peers: {:?}", e);
+                }
+            }
         }
 
         Ok(None)
     }
 
-    async fn discover_peers(&self, peer_addr: String) -> Result<Option<String>, Error> {
-        info!("Discovering peers from {}", peer_addr);
-        let maybe_peer = {
-            let mut peers = self.peers.write().await;
-            peers.get_mut(&peer_addr).and_then(|peer| peer.take())
-        };
-
-        if let Some(mut peer) = maybe_peer {
-            info!("Discovering peers from {}", peer_addr);
-            let discovered = match peer.discover_peers(self.peers_per_request).await {
-                Ok(d) => d,
-                Err(_) => vec![],
-            };
-
-            let mut discovered_addresses: Vec<String> = discovered
-                .into_iter()
-                .filter(|addr| matches!(addr, PeerAddress::V4(_, _)))
-                .map(|addr| match addr {
-                    PeerAddress::V4(ip, port) => format!("{}:{}", ip, port),
-                    _ => unreachable!(),
-                })
-                .collect();
-
-            info!(
-                "Peer {} discovered: {:?} before shuffle",
-                peer_addr, discovered_addresses
-            );
-            discovered_addresses.shuffle(&mut rand::rng());
-            info!(
-                "Peer {} discovered: {:?} after shuffle",
-                peer_addr, discovered_addresses
-            );
-
-            let random_discovered_peer = discovered_addresses.choose(&mut rand::rng()).cloned();
-
-            let mut peers = self.peers.write().await;
-            peers.insert(peer_addr.clone(), Some(peer));
-
-            return Ok(random_discovered_peer);
-        }
-
-        Ok(None)
-    }
-
-    pub async fn init_discovered_peer(&self, peer_addr: &String) {
-        let mut new_peer = Peer::new(&peer_addr, self.network_magic);
+    pub async fn add_peer(&self, peer_addr: &String) {
+        let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
         let connected = match timeout(Duration::from_secs(5), new_peer.init()).await {
             Ok(Ok(())) => true,
