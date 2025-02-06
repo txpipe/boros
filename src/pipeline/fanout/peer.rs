@@ -38,14 +38,10 @@ impl Peer {
 
     pub async fn init(&mut self) -> Result<(), pallas::network::facades::Error> {
         self.is_peer_sharing_enabled = self.query_peer_sharing_mode().await?;
-        info!(peer=%self.peer_addr, "Peer sharing mode: {}", self.is_peer_sharing_enabled);
 
         let mut client = PeerClient::connect(&self.peer_addr, self.network_magic).await?;
-        info!(peer=%self.peer_addr, "Connected to peer");
 
         client.txsubmission().send_init().await.unwrap();
-
-        info!(peer=%self.peer_addr, "Sent init message");
 
         self.client = Arc::new(Mutex::new(Some(client)));
         self.is_alive = true;
@@ -240,6 +236,7 @@ impl Peer {
                 error!(peer=%peer_addr, "Aborting tx submit peer client connection...");
                 client.abort().await
             }
+            
         });
     }
 

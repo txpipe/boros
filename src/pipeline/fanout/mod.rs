@@ -1,6 +1,7 @@
 use std::{
+    collections::{HashSet, VecDeque},
     sync::Arc,
-    time::Duration
+    time::Duration,
 };
 
 use gasket::framework::*;
@@ -35,7 +36,7 @@ impl Stage {
 
 pub struct Worker {
     peer_manager: PeerManager,
-    discovery_queue: Vec<String>,
+    discovery_queue: VecDeque<String>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -49,7 +50,10 @@ impl gasket::framework::Worker<Stage> for Worker {
         let mut peer_manager = PeerManager::new(2, peer_addresses, desired_peer_count);
         peer_manager.init().await.unwrap();
 
-        Ok(Self { peer_manager, discovery_queue: vec![] })
+        Ok(Self {
+            peer_manager,
+            discovery_queue: VecDeque::new(),
+        })
     }
 
     async fn schedule(
@@ -65,10 +69,30 @@ impl gasket::framework::Worker<Stage> for Worker {
             return Ok(WorkSchedule::Unit(FanoutUnit::Transaction(tx)));
         }
 
-        if let Some(peer_addr) = self.discovery_queue.drain(0..1).next() {
+        if let Some(peer_addr) = self.discovery_queue.pop_front() {
             return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(peer_addr)));
         }
 
+        if self.peer_manager.connected_peers_count().await
+            >= stage.config.desired_peer_count as usize
+        {
+            sleep(Duration::from_secs(1)).await;
+            return Ok(WorkSchedule::Idle);
+        }
+
+        if self.discovery_queue.len() < stage.config.peers_per_request as usize {
+            let already_queued = self.discovery_queue.iter().cloned().collect();
+
+            if let Some(peer_addr) = self
+                .peer_manager
+                .pick_peer_rand(&already_queued)
+                .await
+            {
+                // Add the peer to the discovery queue
+                self.discovery_queue.push_back(peer_addr.clone());
+                return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(peer_addr)));
+            }
+        }
 
         sleep(Duration::from_secs(1)).await;
         Ok(WorkSchedule::Idle)
@@ -84,9 +108,9 @@ impl gasket::framework::Worker<Stage> for Worker {
                 transaction.status = TransactionStatus::InFlight;
                 stage.storage.update(&transaction).await.or_retry()?;
             }
-            FanoutUnit::PeerDiscovery(_) => {
+            FanoutUnit::PeerDiscovery(peer_addr) => {
                 info!("Processing PeerSharing unit: Discovering new peers");
-                self.peer_manager.discover_peers().await;
+                self.peer_manager.discover_peers(peer_addr).await;
             }
         }
         Ok(())
