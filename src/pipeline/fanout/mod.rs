@@ -1,8 +1,10 @@
-use std::{collections::VecDeque, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
-use peer_manager::PeerManager;
+use peer::PeerError;
+use peer_manager::{PeerManager, PeerManagerError};
 use serde::Deserialize;
+use thiserror::Error;
 use tokio::time::sleep;
 use tracing::info;
 
@@ -11,6 +13,18 @@ use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
 pub mod mempool;
 pub mod peer;
 pub mod peer_manager;
+
+#[derive(Error, Debug)]
+pub enum FanoutError {
+    #[error("peer manager error: {0}")]
+    PeerManager(#[from] PeerManagerError),
+
+    #[error("peer error: {0}")]
+    Peer(#[from] PeerError),
+
+    #[error("worker error: {0}")]
+    Worker(#[from] gasket::framework::WorkerError),
+}
 
 pub enum FanoutUnit {
     Transaction(Transaction),
@@ -43,7 +57,7 @@ impl gasket::framework::Worker<Stage> for Worker {
         info!("Bootstrap Peer Addresses: {:?}", peer_addresses);
 
         let mut peer_manager = PeerManager::new(2, peer_addresses);
-        peer_manager.init().await.unwrap();
+        peer_manager.init().await.or_retry()?;
 
         Ok(Self {
             peer_manager,
@@ -55,7 +69,6 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<FanoutUnit>, WorkerError> {
-
         let peers_per_request = stage.config.peers_per_request;
 
         if let Some(tx) = stage
@@ -64,12 +77,18 @@ impl gasket::framework::Worker<Stage> for Worker {
             .await
             .or_retry()?
         {
+            info!("Found Transaction: {}, scheduling...", tx.id);
             return Ok(WorkSchedule::Unit(FanoutUnit::Transaction(tx)));
         }
 
         if self.peer_discovery_queue < stage.config.peers_per_request {
-            if let Ok(Some(discovered_peer)) = self.peer_manager.pick_peer_rand(peers_per_request).await {
-                info!("Discovered Peer from Peer Manager: {}", discovered_peer);
+            if let Ok(Some(discovered_peer)) =
+                self.peer_manager.pick_peer_rand(peers_per_request).await
+            {
+                info!(
+                    "Discovered Peer from Peer Manager: {}, scheduling...",
+                    discovered_peer
+                );
                 self.peer_discovery_queue += 1;
                 return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(
                     discovered_peer,
@@ -80,6 +99,7 @@ impl gasket::framework::Worker<Stage> for Worker {
         if self.peer_manager.connected_peers_count().await
             >= stage.config.desired_peer_count as usize
         {
+            info!("Desired peer count reached, idling...");
             sleep(Duration::from_secs(1)).await;
             return Ok(WorkSchedule::Idle);
         }
@@ -92,14 +112,13 @@ impl gasket::framework::Worker<Stage> for Worker {
         match unit {
             FanoutUnit::Transaction(tx) => {
                 let mut transaction = tx.clone();
-                info!("Processing Transaction: {}", transaction.id);
-                // For a transaction unit, forward the raw tx bytes to the peer manager for txsubmission.
+                info!("Executing Transaction Unit: {}", transaction.id);
                 self.peer_manager.add_tx(transaction.raw.clone()).await;
                 transaction.status = TransactionStatus::InFlight;
                 stage.storage.update(&transaction).await.or_retry()?;
             }
             FanoutUnit::PeerDiscovery(peer_addr) => {
-                info!("Processing PeerSharing unit: Discovering new peers");
+                info!("Executing PeerSharing unit: {}", peer_addr);
                 self.peer_manager.add_peer(peer_addr).await;
                 self.peer_discovery_queue -= 1;
             }
