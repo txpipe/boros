@@ -1,0 +1,29 @@
+---
+title: From Source - Boros
+sidebarTitle: From Source
+asIndexPage: true
+---
+
+# From Source
+
+The following instructions show how to build and install Boros from source code.
+
+## Pre-requisites
+
+- Rust toolchain
+
+## Installation
+
+```sh
+git clone git@github.com:txpipe/boros.git
+cd boros
+cargo install --path=.
+```
+
+## Configuration
+
+Create a file `config.toml` following the [configuration](../configuration), set `BOROS_CONFIG` env with the file path or create the config file in `/etc/boros/config.toml`.
+
+```sh
+BOROS_CONFIG=./config.toml boros
+```

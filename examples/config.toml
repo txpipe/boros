@@ -1,8 +1,8 @@
 [storage]
-db_path = "dev.db"
+db_path = "boros.db"
 
 [server]
-listen_address="[::1]:50052"
+listen_address="0.0.0.0:50052"
 
 [peer_manager]
 peers = [

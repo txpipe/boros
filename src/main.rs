@@ -59,6 +59,7 @@ impl Config {
                 config::File::with_name(&env::var("BOROS_CONFIG").unwrap_or("boros.toml".into()))
                     .required(false),
             )
+            .add_source(config::File::with_name("/etc/boros/config.toml").required(false))
             .add_source(config::Environment::with_prefix("boros").separator("_"))
             .build()?
             .try_deserialize()?;

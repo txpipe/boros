@@ -1,5 +1,5 @@
 ---
-title: Design - Boros Docs
+title: Design - Boros
 sidebarTitle: Design
 asIndexPage: true
 ---
@@ -12,7 +12,7 @@ Take a look at the [architectural decision record](./design/adrs)
 
 ## Sequence Flow
 
-Sequence diagram to describe how Boros process the requests and the state of the transactions. 
+Sequence diagram to describe how Boros process the requests and the state of the transactions.
 
 ```mermaid
 sequenceDiagram
@@ -27,7 +27,7 @@ sequenceDiagram
     participant dolos as Dolos
 
     client->>+grpc: send raw tx
-    par Persist in flight 
+    par Persist in flight
         grpc->>+db: persist tx in flight db
         db-->>-grpc: ok
         grpc-->>client: accepted
@@ -81,11 +81,11 @@ erDiagram
         DATETIME created_at
         DATETIME updated_at
     }
-    
+
     tx_dependence {
         TEXT dependent_id PK
         TEXT required_id PK
     }
-    
+
     tx ||--o{ tx_dependence : "One tx can have N other dependencies"
 ```
