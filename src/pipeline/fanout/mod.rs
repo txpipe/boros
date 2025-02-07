@@ -3,13 +3,13 @@ use std::{sync::Arc, time::Duration};
 use gasket::framework::*;
 use peer::PeerError;
 use peer_manager::{PeerManager, PeerManagerError};
-use rand::Rng;
+use rand::{seq::IndexedRandom, Rng};
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::{ledger::relay::MockRelayDataAdapter, storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus}};
+use crate::{ledger::relay::RelayDataAdapter, storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus}};
 
 pub mod mempool;
 pub mod peer;
@@ -36,18 +36,18 @@ pub enum FanoutUnit {
 #[stage(name = "fanout", unit = "FanoutUnit", worker = "Worker")]
 pub struct Stage {
     config: PeerManagerConfig,
-    adapter: Arc<dyn U5cDataAdapter>,
+    relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync>,
     storage: Arc<SqliteTransaction>,
 }
 impl Stage {
     pub fn new(
         config: PeerManagerConfig,
-        adapter: Arc<dyn U5cDataAdapter>,
+        relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync>,
         storage: Arc<SqliteTransaction>,
     ) -> Self {
         Self {
             config,
-            adapter,
+            relay_adapter,
             storage,
         }
     }
@@ -56,7 +56,7 @@ impl Stage {
 pub struct Worker {
     peer_manager: PeerManager,
     peer_discovery_queue: u8,
-    mock_relay_data_adapter: MockRelayDataAdapter,
+    relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -69,12 +69,12 @@ impl gasket::framework::Worker<Stage> for Worker {
         let mut peer_manager = PeerManager::new(2, peer_addresses);
         peer_manager.init().await.or_retry()?;
 
-        let mock_relay_data_adapter = MockRelayDataAdapter::new();
+        let relay_adapter = stage.relay_adapter.clone();
 
         Ok(Self {
             peer_manager,
             peer_discovery_queue: 0,
-            mock_relay_data_adapter,
+            relay_adapter,
         })
     }
 
@@ -99,7 +99,8 @@ impl gasket::framework::Worker<Stage> for Worker {
 
         if self.peer_discovery_queue < additional_peers_required as u8 {
             info!("Additional Peers Required: {}", additional_peers_required);
-            let from_pool_relay = self.mock_relay_data_adapter.pick_peer_rand_from_relay().await;
+            let from_pool_relay = self.relay_adapter.get_relays().await;
+            let from_pool_relay = from_pool_relay.choose(&mut rand::rng()).cloned();
             let from_peer_discovery = self.peer_manager.pick_peer_rand(peer_per_request).await.or_retry()?;
 
             let mut rng = rand::rng();
@@ -173,7 +174,6 @@ mod fanout_tests {
 
         tokio::time::sleep(Duration::from_millis(200)).await;
         let mut tx_submit_peer_client = peer::Peer::new("127.0.0.1:3001", 2);
-
         tx_submit_peer_client.init().await.unwrap();
 
         tokio::time::sleep(Duration::from_secs(1)).await;
