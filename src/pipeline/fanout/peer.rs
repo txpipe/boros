@@ -66,6 +66,7 @@ impl Peer {
 
         self.client = Arc::new(Mutex::new(Some(client)));
         self.is_alive = true;
+        info!(peer=%self.peer_addr, "Peer initialized");
 
         self.start_background_task();
 

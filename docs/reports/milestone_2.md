@@ -1,24 +1,23 @@
-# Boros Catalyst Milestone 2 Test Report
+# Boros Catalyst Milestone 2: Test Report
 
-This document summarizes the test results for the Fanout Mechanism component of the Boros project. All tests have been executed successfully. Please refer to the attached screenshots for detailed evidence.
+This document outlines the detailed analysis of the tests conducted on the **Fanout Mechanism** component of the Boros project. Each test case is thoroughly examined, covering the objectives, execution details, and expected outcomes. Please refer to the attached screenshots for detailed evidence.
 
 ---
-
-## Test Items
 
 ### 1. Transaction Propagation
 
 **Test Objective:**  
 Verify that the fanout mechanism propagates transactions to peers successfully.
 
-**Result:**  
-**PASS**
-
-**Details:**  
-A high-volume transaction submission scenario was simulated, and all transactions were successfully propagated to the designated peers.
+**Details:**
+- Peers are provided via configuration and are initialized.
+- The `Fanout Stage` periodically schedules a `transaction submission` task. This process ensures that the system keeps listening for incoming transactions to properly propagate them.
+- The connected peers will concurrently wait for the server's next request.
+- When a transaction is submitted, it will be propagated each to the connected peers.
+- The logs below show the propagation process, where transactions are processed first, followed by acknowledgment upon successful transmission.
 
 **Screenshot:**  
-![Transaction Propagation Screenshot](test1.png)
+![Transaction Propagation Screenshot](tx_propagation.png)
 
 ---
 
@@ -27,14 +26,14 @@ A high-volume transaction submission scenario was simulated, and all transaction
 **Test Objective:**  
 Verify that the fanout mechanism connects to multiple peers simultaneously using node-to-node protocols.
 
-**Result:**  
-**PASS**
-
-**Details:**  
-The mechanism successfully established concurrent connections with multiple peers using node-to-node protocols.
+**Details:**
+- At the start, the `PeerManager` is initialized with a predefined set of peer addresses provided via configuration.
+- The `PeerManager` creates a connection to each of these peers asynchronously, ensuring the system can manage multiple connections at once.
+- Peer discovery via `peersharing mini-protocol` is also checked for every connected peer, ensuring a dynamic way of maintaining multiple concurrent connectivity.
 
 **Screenshot:**  
-![Multi-Peer Connectivity Screenshot](path/to/multi-peer-connectivity-screenshot.png)
+![Multi-Peer Connectivity Init Screenshot](peer_config_init.png)
+![Multi-Peer Discovery Screenshot](multi_peer_connect.png)
 
 ---
 
@@ -43,14 +42,16 @@ The mechanism successfully established concurrent connections with multiple peer
 **Test Objective:**  
 Verify that a static topology can be provided via configuration and is honored by the fanout mechanism.
 
-**Result:**  
-**PASS**
+**Details:**
+- A static list of peer addresses is provided in the configuration file and loaded at bootstrap.
+- The `PeerManager` is initialized with these addresses, ensuring that only these specified peers are used for communication initially.
+- The `PeerManager` verifies that the specified peers are available and initializes them accordingly.
+- The peer connections are logged for debugging and traceability.
 
-**Details:**  
-The mechanism correctly adhered to the static topology configuration provided, ensuring that only the specified peers were utilized.
 
 **Screenshot:**  
-![Static Topology Screenshot](path/to/static-topology-screenshot.png)
+![Static Topology Screenshot](static_topology.png)
+![Peer Config Initialization](peer_config_init.png)
 
 ---
 
@@ -59,14 +60,14 @@ The mechanism correctly adhered to the static topology configuration provided, e
 **Test Objective:**  
 Verify that a dynamic topology can be constructed automatically using on-chain relay data from pool certificates.
 
-**Result:**  
-**PASS**
-
-**Details:**  
-The mechanism dynamically updated its topology based on on-chain relay data, ensuring optimal peer selection and connection management.
+**Details:**
+- The fanout stage `Worker` fetches relay data using `relay_adapter.get_relays()` method of a generic RelayDataAdapater trait, to gather on-chain relay information that can be used for peer discovery and network topology creation.
+- The `Worker` uses the fetched relay data to dynamically add new peers to the system. It selects `random relay data` from the pool and attempts to connect to those peers.
+- The system checks whether the topology updates correctly by adding peers based on the dynamically retrieved on-chain relay data.
+- If new peers are found, they are added to the current connected peers.
 
 **Screenshot:**  
-![Dynamic Topology On-Chain Screenshot](path/to/dynamic-topology-onchain-screenshot.png)
+![Dynamic Topology On-Chain Screenshot](onchain_relay.png)
 
 ---
 
@@ -75,14 +76,17 @@ The mechanism dynamically updated its topology based on on-chain relay data, ens
 **Test Objective:**  
 Verify that a dynamic topology can be constructed via p2p networking using the peer sharing mini-protocol.
 
-**Result:**  
-**PASS**
+**Details:**
+- The `Fanout Stage` periodically schedules a peer discovery task. This process ensures that the system keeps discovering new peers over time to expand the network.
+- During operation, a `randomly chosen connected peer with peersharing enabled` performs peer discovery. This peer will have its own discovered peers, and one of these discovered peers will be chosen `randomly` and will be used to try for connection.
+- A configuration to limit connected peers is also provided. If the total connected peers exceeds this limit, the `WorkerSchedule` will idle.
+- If a peer discovery fails or a peer cannot be reached, the system logs the failure and retries the discovery process, demonstrating resilience in the network discovery process.
+- The discovery and connection processes are logged, allowing for easy monitoring of the system’s dynamic topology construction.
+- The logs also capture the errors encountered during the discovery process and provide insights into the system’s retry behavior.
 
-**Details:**  
-The fanout mechanism successfully built a dynamic topology using the peer sharing mini-protocol, demonstrating effective p2p networking capabilities.
 
 **Screenshot:**  
-![Dynamic Topology P2P Screenshot](path/to/dynamic-topology-p2p-screenshot.png)
+![Dynamic Topology P2P Screenshot](p2p_relay.png)
 
 ---
 
@@ -90,10 +94,12 @@ The fanout mechanism successfully built a dynamic topology using the peer sharin
 
 All acceptance criteria for the fanout mechanism have been met with successful test outcomes in the following areas:
 
-- Transaction propagation to peers.
-- Simultaneous multi-peer connectivity using node-to-node protocols.
-- Adherence to static topology configuration.
-- Dynamic topology construction via on-chain relay data.
-- Dynamic topology construction via peer sharing mini-protocol.
+| Test Case                                          | Outcome                                  |
+| -------------------------------------------------- | ---------------------------------------- |
+| **Transaction Propagation**                        | Transactions are reliably propagated to all connected peers. |
+| **Multi-Peer Connectivity**                        | The system effectively maintains multiple simultaneous connections using node-to-node protocols. |
+| **Static Topology Configuration**                  | The Fanout Mechanism adheres to the static topology specified in the configuration file at bootstrap. |
+| **Dynamic Topology via On-Chain Relay Data**       | On-chain data is used to dynamically update and optimize the peer topology. |
+| **Dynamic Topology via Peer Sharing**              | The peer-sharing mini-protocol ensures the network expands dynamically and efficiently.
 
 The attached screenshots serve as evidence for each test case, confirming that the fanout mechanism is robust and performs as expected in all tested scenarios.
