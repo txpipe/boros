@@ -75,7 +75,8 @@ impl gasket::framework::Worker<Stage> for Worker {
         stage: &mut Stage,
     ) -> Result<WorkSchedule<FanoutUnit>, WorkerError> {
         let desired_count = stage.config.desired_peer_count;
-        let additional_peers_required = stage.config.desired_peer_count as usize
+        let peer_per_request = stage.config.peers_per_request;
+        let additional_peers_required = desired_count as usize
             - self.peer_manager.connected_peers_count().await;
 
         if let Some(tx) = stage
@@ -91,7 +92,7 @@ impl gasket::framework::Worker<Stage> for Worker {
         if self.peer_discovery_queue < additional_peers_required as u8 {
             info!("Additional Peers Required: {}", additional_peers_required);
             let from_pool_relay = self.mock_relay_data_adapter.pick_peer_rand_from_relay().await;
-            let from_peer_discovery = self.peer_manager.pick_peer_rand(desired_count).await.or_retry()?;
+            let from_peer_discovery = self.peer_manager.pick_peer_rand(peer_per_request).await.or_retry()?;
 
             let mut rng = rand::rng();
             let chosen_peer = if rng.random_bool(0.5) {
@@ -135,6 +136,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 pub struct PeerManagerConfig {
     peers: Vec<String>,
     desired_peer_count: u8,
+    peers_per_request: u8
 }
 
 // Test for Fanout Stage
