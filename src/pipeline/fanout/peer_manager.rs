@@ -53,7 +53,7 @@ impl PeerManager {
 
     pub async fn pick_peer_rand(
         &self,
-        desired_peers: u8,
+        peers_per_request: u8,
     ) -> Result<Option<String>, PeerManagerError> {
         let mut peers = self.peers.write().await;
         let mut rng = rand::rng();
@@ -69,7 +69,7 @@ impl PeerManager {
 
         if let Some(peer_ref) = candidates.as_mut_slice().choose_mut(&mut rng) {
             let sub_peers = (*peer_ref)
-                .discover_peers(desired_peers)
+                .discover_peers(peers_per_request)
                 .await
                 .map_err(PeerManagerError::PeerDiscovery)?;
 
