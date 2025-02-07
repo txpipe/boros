@@ -88,35 +88,38 @@ impl PeerManager {
         Ok(None)
     }
 
-    pub async fn add_peer(&self, peer_addr: &String) {
+    /// Checks if a peer already exists.
+    pub async fn is_peer_exist(&self, peer_addr: &str) -> bool {
         let peers = self.peers.read().await;
-        if peers.contains_key(peer_addr) {
+        peers.contains_key(peer_addr)
+    }
+
+    /// Adds a new peer if it does not already exist.
+    pub async fn add_peer(&self, peer_addr: &str) {
+        if self.is_peer_exist(peer_addr).await {
             warn!("Peer {} already exists", peer_addr);
             return;
         }
 
         let mut new_peer = Peer::new(peer_addr, self.network_magic);
+        let timeout_duration = Duration::from_secs(5);
 
-        let connected = match timeout(Duration::from_secs(5), new_peer.init()).await {
+        match timeout(timeout_duration, new_peer.init()).await {
             Ok(Ok(())) => {
                 info!("Peer {} connected successfully", peer_addr);
-                true
+                let mut peers = self.peers.write().await;
+                // Convert the &str to a String if necessary.
+                peers.insert(peer_addr.to_string(), Some(new_peer));
             }
             Ok(Err(e)) => {
                 error!("Peer {} initialization error: {:?}", peer_addr, e);
-                false
             }
             Err(_) => {
                 error!("Peer {} connection timed out", peer_addr);
-                false
             }
-        };
-
-        if connected {
-            let mut peers = self.peers.write().await;
-            peers.insert(peer_addr.clone(), Some(new_peer));
         }
     }
+    
 
     pub async fn connected_peers_count(&self) -> usize {
         let peers = self.peers.read().await;
