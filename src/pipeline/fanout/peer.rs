@@ -185,6 +185,7 @@ impl Peer {
                 // Process the consumer's request
                 match request {
                     Request::TxIds(ack, req) => {
+                        info!(peer=%peer_addr, "Received TX IDs Blocking request: ack={}, req={}", ack, req);
                         let mempool_guard = mempool_arc.lock().await;
                         let mut client_guard = client_arc.lock().await;
                         let client_ref = match client_guard.as_mut() {
@@ -206,6 +207,7 @@ impl Peer {
                         .ok();
                     }
                     Request::TxIdsNonBlocking(ack, req) => {
+                        info!(peer=%peer_addr, "Received TX IDs Non-Blocking request: ack={}, req={}", ack, req);
                         let mempool_guard = mempool_arc.lock().await;
                         mempool_guard.acknowledge(ack as usize);
 
@@ -225,6 +227,7 @@ impl Peer {
                     }
                     Request::Txs(ids) => {
                         let ids: Vec<_> = ids.iter().map(|x| (x.0, x.1.clone())).collect();
+                        info!(peer=%peer_addr, "Received TX Body download request: {:?}", ids.iter().map(|x| hex::encode(x.1.as_slice())).collect::<Vec<String>>());
 
                         let to_send = {
                             let mempool_guard = mempool_arc.lock().await;

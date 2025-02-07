@@ -117,13 +117,13 @@ impl gasket::framework::Worker<Stage> for Worker {
         match unit {
             FanoutUnit::Transaction(tx) => {
                 let mut transaction = tx.clone();
-                info!("Executing Transaction Unit: {}", transaction.id);
+                info!("Propagating Transaction: {}", transaction.id);
                 self.peer_manager.add_tx(transaction.raw.clone()).await;
                 transaction.status = TransactionStatus::InFlight;
                 stage.storage.update(&transaction).await.or_retry()?;
             }
             FanoutUnit::PeerDiscovery(peer_addr) => {
-                info!("Executing PeerSharing unit: {}", peer_addr);
+                info!("Connecting to peer: {}", peer_addr);
                 self.peer_manager.add_peer(peer_addr).await;
                 self.peer_discovery_queue -= 1;
             }
