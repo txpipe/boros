@@ -35,13 +35,21 @@ pub enum FanoutUnit {
 #[derive(Stage)]
 #[stage(name = "fanout", unit = "FanoutUnit", worker = "Worker")]
 pub struct Stage {
-    storage: Arc<SqliteTransaction>,
     config: PeerManagerConfig,
+    adapter: Arc<dyn U5cDataAdapter>,
+    storage: Arc<SqliteTransaction>,
 }
-
 impl Stage {
-    pub fn new(storage: Arc<SqliteTransaction>, config: PeerManagerConfig) -> Self {
-        Self { storage, config }
+    pub fn new(
+        config: PeerManagerConfig,
+        adapter: Arc<dyn U5cDataAdapter>,
+        storage: Arc<SqliteTransaction>,
+    ) -> Self {
+        Self {
+            config,
+            adapter,
+            storage,
+        }
     }
 }
 
@@ -112,7 +120,7 @@ impl gasket::framework::Worker<Stage> for Worker {
         sleep(Duration::from_secs(1)).await;
         Ok(WorkSchedule::Idle)
     }
-
+  
     async fn execute(&mut self, unit: &FanoutUnit, stage: &mut Stage) -> Result<(), WorkerError> {
         match unit {
             FanoutUnit::Transaction(tx) => {

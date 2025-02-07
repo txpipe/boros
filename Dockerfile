@@ -8,9 +8,10 @@ RUN apt install -y build-essential pkg-config libssl-dev libsasl2-dev cmake
 COPY ./Cargo.toml ./Cargo.toml
 COPY . .
 
-RUN cargo build --release --bin=boros
+RUN cargo build --release
 
-FROM alpine:3.21.2
-COPY --from=build /app/target/release/boros .
-CMD ["./boros"]
-LABEL service=boros
+FROM debian:stable-slim
+
+COPY --from=build /app/target/release/boros /usr/local/bin/boros
+
+ENTRYPOINT [ "boros" ]

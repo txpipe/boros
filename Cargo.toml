@@ -23,7 +23,6 @@ hex = "0.4.3"
 itertools = "0.14.0"
 pallas = { git = "https://github.com/txpipe/pallas.git" }
 protoc-wkt = "1.0.0"
-rocket = "0.5.1"
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"
 sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }

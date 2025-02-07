@@ -1,0 +1,41 @@
+---
+title: Docs home - Boros
+sidebarTitle: Introduction
+---
+
+# Boros
+
+Submitting an isolated Cardano Tx is simple enough. Submitting a constant stream of transaction with a high-level of a assurance and performance is quite complex. We want to build a generic backend component that can be used by dApps that have intense submission workloads.
+
+We're building a new infrastructure component called Boros, that can be used by dApp teams as a smart, massive pipeline for transaction submission. It will include the following features:
+
+## Resilience
+
+- Persistent queues: Boros uses persistent message queues through pluggable backend technologies such as Kafka, Redis and Postgres; allowing dApps to fire-and-forget transaction without the risk of data loss.
+- Tx Monitoring: an automated procedure will monitor submission, confirmation and rollbacks of transactions, updating in real-time the status of each.
+- Retry Mechanism: Boros includes an automatic retry mechanism using configurable policies to handle confirmation timeouts or rollbacked transaction.
+
+## Throughput
+
+- Peer Fanout: an outbound connection manager will connect to multiple peers simultaneously using node-to-node protocols to propagate transactions as efficient as possible.
+- Configurable Topology: a static topology can be provided via configuration for scenarios where outbound relays are known in advance.
+- Dynamic Topology: a dynamic topology can be constructed automatically using on-chain relay data from pool certificates or via p2p networking using the peer sharing mini-protocol.
+
+## Smart submission
+
+- TX-Chaining: chaining is a mechanism to drastically improve throughput that involves careful management during the submission phase. Boros will be detect chained txs and maintain the required "session affinity" against the upstream peer.
+- Priority Queues: Boros will have support for different priority queues with configurable policies, allowing high-priority txs to jump ahead of lower priority ones.
+- Server-side Signatures: for dApps that require it, Boros will support server-side tx signatures by integrating battle tested key managers such as Hashicorp Vault.
+
+## Developer Experience
+
+- Lightweight Process: Boros will be a very lightweight process with little resource footprint.
+- No Dependencies: Boros will connect directly to peers using node-to-node miniprotocols. No Cardano node will be required to run Boros.
+- Friendly API: Boros will support different API mechanism to queue transactions via three different alternative protocols: HTTP, WebSockets and gRPC.
+- Notification WebHooks: Boros will have the option to configure webhooks to receive notifications for status change from the submission pipeline. Devs will be able to subscribe to events such as: Tx submitted, Tx confirmed, Tx rolled-back, Tx retry).
+
+## Observability
+
+- Prometheus metrics: Boros will ship with Prometheus metrics, allowing operators to measure throughput, performance, health, peer status and more. We'll also include default  Grafana dashboards that can be used out-of-the-box or customized.
+- Management API: Boros provides an API that can be used to execute special management operation such as queue configuration, tx monitoring, tx removal, tx prioritization, etc.
+- Detailed Logging: Boros outputs structured logs detailing the the different state transitions of txs in the queue, along with other relevant processing events. This logs can be used for debugging but also for future traceability of activities.

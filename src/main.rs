@@ -3,15 +3,15 @@ use std::{env, error::Error, path, sync::Arc};
 use anyhow::Result;
 use dotenv::dotenv;
 use serde::Deserialize;
-use storage::sqlite::{SqliteStorage, SqliteTransaction};
+use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod ledger;
 mod pipeline;
 mod server;
 mod storage;
-mod ledger;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,12 +29,13 @@ async fn main() -> Result<()> {
 
     let config = Config::new().expect("invalid config file");
 
-    let storage = SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?;
+    let storage = Arc::new(SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?);
     storage.migrate().await?;
 
-    let tx_storage = Arc::new(SqliteTransaction::new(storage));
+    let tx_storage = Arc::new(SqliteTransaction::new(storage.clone()));
+    let cursor_storage = Arc::new(SqliteCursor::new(storage.clone()));
 
-    let pipeline = pipeline::run(config.clone(), tx_storage.clone());
+    let pipeline = pipeline::run(config.clone(), tx_storage.clone(), cursor_storage.clone());
     let server = server::run(config.server, tx_storage.clone());
 
     try_join!(pipeline, server)?;
@@ -47,7 +48,8 @@ struct Config {
     server: server::Config,
     storage: storage::Config,
     peer_manager: pipeline::fanout::PeerManagerConfig,
-    monitor: pipeline::monitor::u5c::Config,
+    monitor: pipeline::monitor::Config,
+    u5c: ledger::u5c::Config,
 }
 
 impl Config {
@@ -57,6 +59,7 @@ impl Config {
                 config::File::with_name(&env::var("BOROS_CONFIG").unwrap_or("boros.toml".into()))
                     .required(false),
             )
+            .add_source(config::File::with_name("/etc/boros/config.toml").required(false))
             .add_source(config::Environment::with_prefix("boros").separator("_"))
             .build()?
             .try_deserialize()?;

@@ -1,10 +1,10 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Error, Result};
 use chrono::Utc;
 use sqlx::{sqlite::SqliteRow, FromRow, Row};
 
-use super::{Transaction, TransactionStatus};
+use super::{Cursor, Transaction, TransactionStatus};
 
 pub struct SqliteStorage {
     db: sqlx::sqlite::SqlitePool,
@@ -62,11 +62,11 @@ impl FromRow<'_, SqliteRow> for Transaction {
 }
 
 pub struct SqliteTransaction {
-    sqlite: SqliteStorage,
+    sqlite: Arc<SqliteStorage>,
 }
 
 impl SqliteTransaction {
-    pub fn new(sqlite: SqliteStorage) -> Self {
+    pub fn new(sqlite: Arc<SqliteStorage>) -> Self {
         Self { sqlite }
     }
 
@@ -268,19 +268,76 @@ impl SqliteTransaction {
     }
 }
 
+impl FromRow<'_, SqliteRow> for Cursor {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Self {
+            slot: row.try_get("slot")?,
+            hash: row.try_get("hash")?,
+        })
+    }
+}
+
+pub struct SqliteCursor {
+    sqlite: Arc<SqliteStorage>,
+}
+impl SqliteCursor {
+    pub fn new(sqlite: Arc<SqliteStorage>) -> Self {
+        Self { sqlite }
+    }
+
+    pub async fn set(&self, cursor: &Cursor) -> Result<()> {
+        let slot = cursor.slot as i64;
+
+        sqlx::query!(
+            r#"
+                INSERT OR REPLACE INTO cursor(
+                    id,
+	                slot,
+	                hash
+                )
+                VALUES (0, $1, $2);
+            "#,
+            slot,
+            cursor.hash
+        )
+        .execute(&self.sqlite.db)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn current(&self) -> Result<Option<Cursor>> {
+        let cursor = sqlx::query_as::<_, Cursor>(
+            r#"
+                    SELECT
+                    	slot,
+                    	hash
+                    FROM
+                    	cursor;
+            "#,
+        )
+        .fetch_optional(&self.sqlite.db)
+        .await?;
+
+        Ok(cursor)
+    }
+}
+
 #[cfg(test)]
-mod sqlite_tests {
+mod sqlite_transaction_tests {
+    use std::sync::Arc;
+
     use crate::storage::{Transaction, TransactionStatus};
 
     use super::{SqliteStorage, SqliteTransaction};
 
     async fn mock_sqlite() -> SqliteTransaction {
-        let sqlite_storage = SqliteStorage::ephemeral().await.unwrap();
+        let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
         SqliteTransaction::new(sqlite_storage)
     }
 
     #[tokio::test]
-    async fn it_should_create_tx() {
+    async fn it_should_create() {
         let storage = mock_sqlite().await;
         let transaction = Transaction::default();
 
@@ -289,7 +346,7 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn it_should_create_tx_with_dependencies() {
+    async fn it_should_create_with_dependencies() {
         let storage = mock_sqlite().await;
         let mut transaction_1 = Transaction::default();
         transaction_1.id = "hex1".into();
@@ -303,7 +360,7 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn it_should_fail_create_tx_with_invalid_dependencies() {
+    async fn it_should_fail_create_with_invalid_dependencies() {
         let storage = mock_sqlite().await;
 
         let mut transaction = Transaction::default();
@@ -314,7 +371,7 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn it_should_find_next_transaction() {
+    async fn it_should_find_next() {
         let storage = mock_sqlite().await;
         let transaction = Transaction::default();
 
@@ -326,7 +383,7 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn it_should_update_transaction() {
+    async fn it_should_update() {
         let storage = mock_sqlite().await;
 
         let transaction = Transaction::default();
@@ -343,7 +400,7 @@ mod sqlite_tests {
     }
 
     #[tokio::test]
-    async fn it_should_update_batch_transaction() {
+    async fn it_should_update_batch() {
         let storage = mock_sqlite().await;
 
         let mut batch = Vec::new();
@@ -422,5 +479,59 @@ mod sqlite_tests {
         let result = storage.find_to_rollback(10).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod sqlite_cursor_tests {
+    use std::sync::Arc;
+
+    use crate::storage::Cursor;
+
+    use super::{SqliteCursor, SqliteStorage};
+
+    async fn mock_sqlite() -> SqliteCursor {
+        let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
+        SqliteCursor::new(sqlite_storage)
+    }
+
+    #[tokio::test]
+    async fn it_should_set() {
+        let storage = mock_sqlite().await;
+        let cursor = Cursor::default();
+
+        let result = storage.set(&cursor).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn it_should_set_when_it_updates() {
+        let storage = mock_sqlite().await;
+
+        let cursor = Cursor::default();
+        storage.set(&cursor).await.unwrap();
+
+        let cursor = Cursor {
+            slot: 2,
+            ..Default::default()
+        };
+        let result = storage.set(&cursor).await;
+        assert!(result.is_ok());
+
+        let result = storage.current().await;
+        assert!(result.is_ok());
+        assert!(result.as_ref().unwrap().is_some());
+        assert!(result.unwrap().unwrap().slot == 2);
+    }
+
+    #[tokio::test]
+    async fn it_should_find_current() {
+        let storage = mock_sqlite().await;
+        let cursor = Cursor::default();
+        storage.set(&cursor).await.unwrap();
+
+        let result = storage.current().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
     }
 }

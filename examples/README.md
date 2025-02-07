@@ -39,4 +39,3 @@ Executing
 ```
 ./tx-gen
 ```
-

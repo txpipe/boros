@@ -1,12 +1,18 @@
+---
+title: Design - Boros
+sidebarTitle: Design
+asIndexPage: true
+---
+
 ## Architectural design
 
 Boros runs two threads, where one is the pipeline to process the states of transactions, and the other one is the GRPC server to receive requests. The GRPC makes a basic validation only to check if the transactions are valid and save them as pending in the DB. Each stage in the pipeline consumes the transactions in the DB based on the status of the transaction, so if the Boros process shuts down, it can be started again without losing the state. Furthermore, the pipeline has a policy of attempts, so if there's an error, the stage is retried based on the policy.
 
-Take a look at the [architectural decision record](./adrs)
+Take a look at the [architectural decision record](./design/adrs)
 
 ## Sequence Flow
 
-Sequence diagram to describe how Boros process the requests and the state of the transactions. 
+Sequence diagram to describe how Boros process the requests and the state of the transactions.
 
 ```mermaid
 sequenceDiagram
@@ -21,7 +27,7 @@ sequenceDiagram
     participant dolos as Dolos
 
     client->>+grpc: send raw tx
-    par Persist in flight 
+    par Persist in flight
         grpc->>+db: persist tx in flight db
         db-->>-grpc: ok
         grpc-->>client: accepted
@@ -75,11 +81,11 @@ erDiagram
         DATETIME created_at
         DATETIME updated_at
     }
-    
+
     tx_dependence {
         TEXT dependent_id PK
         TEXT required_id PK
     }
-    
+
     tx ||--o{ tx_dependence : "One tx can have N other dependencies"
 ```
