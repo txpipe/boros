@@ -3,13 +3,13 @@ use std::{sync::Arc, time::Duration};
 use gasket::framework::*;
 use peer::PeerError;
 use peer_manager::{PeerManager, PeerManagerError};
-use rand::{rngs::SmallRng, seq::IndexedRandom, Rng};
+use rand::Rng;
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::{ledger::relay::{MockRelayDataAdapter, RelayDataAdapter}, storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus}};
+use crate::{ledger::relay::MockRelayDataAdapter, storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus}};
 
 pub mod mempool;
 pub mod peer;
