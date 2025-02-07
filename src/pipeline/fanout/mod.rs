@@ -3,12 +3,13 @@ use std::{sync::Arc, time::Duration};
 use gasket::framework::*;
 use peer::PeerError;
 use peer_manager::{PeerManager, PeerManagerError};
+use rand::{rngs::SmallRng, seq::IndexedRandom, Rng};
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus};
+use crate::{ledger::relay::{MockRelayDataAdapter, RelayDataAdapter}, storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus}};
 
 pub mod mempool;
 pub mod peer;
@@ -47,6 +48,7 @@ impl Stage {
 pub struct Worker {
     peer_manager: PeerManager,
     peer_discovery_queue: u8,
+    mock_relay_data_adapter: MockRelayDataAdapter,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -59,9 +61,12 @@ impl gasket::framework::Worker<Stage> for Worker {
         let mut peer_manager = PeerManager::new(2, peer_addresses);
         peer_manager.init().await.or_retry()?;
 
+        let mock_relay_data_adapter = MockRelayDataAdapter::new();
+
         Ok(Self {
             peer_manager,
             peer_discovery_queue: 0,
+            mock_relay_data_adapter,
         })
     }
 
@@ -69,7 +74,9 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<FanoutUnit>, WorkerError> {
-        let peers_per_request = stage.config.peers_per_request;
+        let desired_count = stage.config.desired_peer_count;
+        let additional_peers_required = stage.config.desired_peer_count as usize
+            - self.peer_manager.connected_peers_count().await;
 
         if let Some(tx) = stage
             .storage
@@ -77,31 +84,28 @@ impl gasket::framework::Worker<Stage> for Worker {
             .await
             .or_retry()?
         {
-            info!("Found Transaction: {}, scheduling...", tx.id);
+            info!("Found Transaction: {}", tx.id);
             return Ok(WorkSchedule::Unit(FanoutUnit::Transaction(tx)));
         }
 
-        if self.peer_discovery_queue < stage.config.peers_per_request {
-            if let Ok(Some(discovered_peer)) =
-                self.peer_manager.pick_peer_rand(peers_per_request).await
-            {
-                info!(
-                    "Discovered Peer from Peer Manager: {}, scheduling...",
-                    discovered_peer
-                );
-                self.peer_discovery_queue += 1;
-                return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(
-                    discovered_peer,
-                )));
-            }
-        }
+        if self.peer_discovery_queue < additional_peers_required as u8 {
+            info!("Additional Peers Required: {}", additional_peers_required);
+            let from_pool_relay = self.mock_relay_data_adapter.pick_peer_rand_from_relay().await;
+            let from_peer_discovery = self.peer_manager.pick_peer_rand(desired_count).await.or_retry()?;
 
-        if self.peer_manager.connected_peers_count().await
-            >= stage.config.desired_peer_count as usize
-        {
-            info!("Desired peer count reached, idling...");
-            sleep(Duration::from_secs(1)).await;
-            return Ok(WorkSchedule::Idle);
+            let mut rng = rand::rng();
+            let chosen_peer = if rng.random_bool(0.5) {
+                info!("Onchain Relay chosen: {:?}", from_pool_relay);
+                from_pool_relay
+            } else {
+                info!("P2P Relay chosen: {:?}", from_peer_discovery);
+                from_peer_discovery
+            };
+
+            if let Some(peer_addr) = chosen_peer {
+                self.peer_discovery_queue += 1;
+                return Ok(WorkSchedule::Unit(FanoutUnit::PeerDiscovery(peer_addr)));
+            }
         }
 
         sleep(Duration::from_secs(1)).await;
@@ -131,7 +135,6 @@ impl gasket::framework::Worker<Stage> for Worker {
 pub struct PeerManagerConfig {
     peers: Vec<String>,
     desired_peer_count: u8,
-    peers_per_request: u8,
 }
 
 // Test for Fanout Stage

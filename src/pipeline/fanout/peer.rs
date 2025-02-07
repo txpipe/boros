@@ -9,7 +9,7 @@ use pallas::network::{facades::PeerClient, miniprotocols::txsubmission::TxIdAndS
 use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task;
-use tracing::error;
+use tracing::{error, info};
 
 use super::mempool::{self, Mempool, MempoolError};
 
@@ -170,6 +170,7 @@ impl Peer {
                         }
                     };
 
+                    info!(peer=%peer_addr, "Waiting for next request");
                     client_ref.txsubmission().next_request().await
                 };
 

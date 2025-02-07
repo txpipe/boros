@@ -6,7 +6,7 @@ use rand::seq::{IndexedMutRandom, IndexedRandom};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use super::peer::{Peer, PeerError};
 
@@ -89,6 +89,12 @@ impl PeerManager {
     }
 
     pub async fn add_peer(&self, peer_addr: &String) {
+        let peers = self.peers.read().await;
+        if peers.contains_key(peer_addr) {
+            warn!("Peer {} already exists", peer_addr);
+            return;
+        }
+
         let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
         let connected = match timeout(Duration::from_secs(5), new_peer.init()).await {
