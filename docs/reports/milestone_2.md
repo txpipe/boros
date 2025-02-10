@@ -17,7 +17,7 @@ Verify that the fanout mechanism propagates transactions to peers successfully.
 - The logs below show the propagation process, where transactions are processed first, followed by acknowledgment upon successful transmission.
 
 **Screenshot:**  
-![Transaction Propagation Screenshot](tx_propagation.png)
+![Transaction Propagation Screenshot](./assets/tx_propagation.png)
 
 ---
 
@@ -32,8 +32,8 @@ Verify that the fanout mechanism connects to multiple peers simultaneously using
 - Peer discovery via `peersharing mini-protocol` is also checked for every connected peer, ensuring a dynamic way of maintaining multiple concurrent connectivity.
 
 **Screenshot:**  
-![Multi-Peer Connectivity Init Screenshot](peer_config_init.png)
-![Multi-Peer Discovery Screenshot](multi_peer_connect.png)
+![Multi-Peer Connectivity Init Screenshot](./assets/peer_config_init.png)
+![Multi-Peer Discovery Screenshot](./assets/multi_peer_connect.png)
 
 ---
 
@@ -50,8 +50,8 @@ Verify that a static topology can be provided via configuration and is honored b
 
 
 **Screenshot:**  
-![Static Topology Screenshot](static_topology.png)
-![Peer Config Initialization](peer_config_init.png)
+![Static Topology Screenshot](./assets/static_topology.png)
+![Peer Config Initialization](./assets/peer_config_init.png)
 
 ---
 
@@ -67,7 +67,7 @@ Verify that a dynamic topology can be constructed automatically using on-chain r
 - If new peers are found, they are added to the current connected peers.
 
 **Screenshot:**  
-![Dynamic Topology On-Chain Screenshot](onchain_relay.png)
+![Dynamic Topology On-Chain Screenshot](./assets/onchain_relay.png)
 
 ---
 
@@ -86,7 +86,7 @@ Verify that a dynamic topology can be constructed via p2p networking using the p
 
 
 **Screenshot:**  
-![Dynamic Topology P2P Screenshot](p2p_relay.png)
+![Dynamic Topology P2P Screenshot](./assets/p2p_relay.png)
 
 ---
 
@@ -94,12 +94,12 @@ Verify that a dynamic topology can be constructed via p2p networking using the p
 
 All acceptance criteria for the fanout mechanism have been met with successful test outcomes in the following areas:
 
-| Test Case                                          | Outcome                                  |
-| -------------------------------------------------- | ---------------------------------------- |
-| **Transaction Propagation**                        | Transactions are reliably propagated to all connected peers. |
-| **Multi-Peer Connectivity**                        | The system effectively maintains multiple simultaneous connections using node-to-node protocols. |
-| **Static Topology Configuration**                  | The Fanout Mechanism adheres to the static topology specified in the configuration file at bootstrap. |
-| **Dynamic Topology via On-Chain Relay Data**       | On-chain data is used to dynamically update and optimize the peer topology. |
-| **Dynamic Topology via Peer Sharing**              | The peer-sharing mini-protocol ensures the network expands dynamically and efficiently.
+|  | Test Case                                          | Outcome                                  |
+| --- | -------------------------------------------------- | ---------------------------------------- |
+| ✔️ | **Transaction Propagation**                        | Transactions are reliably propagated to all connected peers. |
+| ✔️ | **Multi-Peer Connectivity**                        | The system effectively maintains multiple simultaneous connections using node-to-node protocols. |
+| ✔️ | **Static Topology Configuration**                  | The Fanout Mechanism adheres to the static topology specified in the configuration file at bootstrap. |
+| ✔️ | **Dynamic Topology via On-Chain Relay Data**       | On-chain data is used to dynamically update and optimize the peer topology. |
+| ✔️ | **Dynamic Topology via Peer Sharing**              | The peer-sharing mini-protocol ensures the network expands dynamically and efficiently.
 
 The attached screenshots serve as evidence for each test case, confirming that the fanout mechanism is robust and performs as expected in all tested scenarios.
