@@ -22,6 +22,7 @@ FROM dependencies-env
 COPY ./package.json ./pnpm-lock.yaml /app/
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/.next /app/.next
+COPY --from=build-env /app/public /app/public
 WORKDIR /app
 EXPOSE 3000
 CMD ["pnpm", "start"]

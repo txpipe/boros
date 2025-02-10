@@ -1,5 +1,5 @@
 ---
-title: Storage - Boros Docs
+title: Storage
 sidebarTitle: Storage
 ---
 
