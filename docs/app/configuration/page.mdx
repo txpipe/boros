@@ -50,11 +50,11 @@ The `storage` section defines the options to start the local database. This db s
 
 The `server` section controls the options for the gRPC endpoint that can be used by clients.
 
-| property       | type   | example      |
-| -------------- | ------ | ------------ |
-| listen_address | string | "[::]:50051" |
+| property       | type   | example         |
+| -------------- | ------ | --------------- |
+| listen_address | string | "0.0.0.0:50051" |
 
-- `listen_address`: the local address (`IP:PORT`) to listen for incoming gRPC connections (`[::]` represents any IP address).
+- `listen_address`: the local address (`IP:PORT`) to listen for incoming gRPC connections.
 
 ### `peer_manager` section
 
