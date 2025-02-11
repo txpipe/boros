@@ -1,5 +1,5 @@
 ---
-title: Pipeline - Boros Docs
+title: Pipeline
 sidebarTitle: Pipeline
 ---
 

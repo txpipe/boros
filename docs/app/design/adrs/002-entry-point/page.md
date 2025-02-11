@@ -1,5 +1,5 @@
 ---
-title: Entry point - Boros Docs
+title: Entry point
 sidebarTitle: Entry point
 ---
 

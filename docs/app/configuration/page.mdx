@@ -1,5 +1,5 @@
 ---
-title: Configuration - Boros
+title: Configuration
 sidebarTitle: Configuration
 asIndexPage: true
 ---
@@ -8,7 +8,93 @@ asIndexPage: true
 
 Boros uses a `config.toml` file to define some configuration parameters. At least one Cardano Node Peer is required and a U5C server.
 
-Use this [config.toml](https://github.com/txpipe/boros/blob/main/examples/config.toml) to create yours.
+## Schema
+
+Example `config.toml`
+
+```toml
+[storage]
+db_path = "boros.db"
+
+[server]
+listen_address="0.0.0.0:50052"
+
+[peer_manager]
+peers = [
+  "Node:3001",
+  "Node:3001",
+]
+
+[monitor]
+retry_slot_diff = 1000
+
+[u5c]
+uri = "https://mainnet.utxorpc-v0.demeter.run"
+
+# metadata is optional
+[u5c.metadata]
+"dmtr-api-key" = "your key"
+```
+
+### `storage` section
+
+The `storage` section defines the options to start the local database. This db saves the transaction that the user sends and controls the status.
+
+| property   | type    | example               |
+| ---------- | ------- | --------------------- |
+| db_path    | string  | "/etc/boros/local.db" |
+
+- `db_path`: path to create the boros db
+
+### `server` section
+
+The `server` section controls the options for the gRPC endpoint that can be used by clients.
+
+| property       | type   | example         |
+| -------------- | ------ | --------------- |
+| listen_address | string | "0.0.0.0:50051" |
+
+- `listen_address`: the local address (`IP:PORT`) to listen for incoming gRPC connections.
+
+### `peer_manager` section
+
+The `peer_manager` section defines the options that the peer manager uses to connect to the Cardano Node peer and to propagate the transactions.
+
+| property       | type   | example                      |
+| -------------- | ------ | ---------------------------- |
+| peers          | array  | [ "Node:3001", "Node:3001" ] |
+
+- `peers`: The peers address (`DNS or IP:PORT`) to connect to the Cardano Node and to propagate transactions.
+
+### `monitor` section
+
+The `monitor` section defines the options to control the monitor stage.
+
+| property        | type   | example |
+| --------------  | ------ | ------- |
+| retry_slot_diff | number | 1000    |
+
+- `retry_slot_diff`: The number of slot units used to determine when to retry a transaction. If (slot_current_block - slot_tx_sent) > retry_slot_diff, the transaction will be retried.
+
+### `u5c` section
+
+The `u5c` section defines the options for U5C to connect to chainsync.
+
+| property    | type   | example                                  |
+| ----------- | ------ | ---------------------------------------- |
+| uri         | string | "https://mainnet.utxorpc-v0.demeter.run" |
+
+- `uri`: The uri to connect to a U5C server.
+
+### `u5c.metadata` section
+
+The `u5c.metadata` section is optional and defines metadata for U5C connection, it's a hashmap key value.
+
+| property    | type   | example |
+| ----------- | ------ | ------- |
+| key         | string | "value" |
+
+- `key`: a string value.
 
 ## Tips
 
