@@ -24,6 +24,8 @@ peers = [
   "Node:3001",
   "Node:3001",
 ]
+desired_peer_count = 10
+peers_per_request = 10
 
 [monitor]
 retry_slot_diff = 1000
@@ -63,8 +65,12 @@ The `peer_manager` section defines the options that the peer manager uses to con
 | property       | type   | example                      |
 | -------------- | ------ | ---------------------------- |
 | peers          | array  | [ "Node:3001", "Node:3001" ] |
+| desired_peer_count | number | 10 |
+| peers_per_request | number | 10 |
 
 - `peers`: The peers address (`DNS or IP:PORT`) to connect to the Cardano Node and to propagate transactions.
+- `desired_peer_count`: The maximum allowable number of peer client connections.
+- `peers_per_request`: The maximum number of peers that the peer client will request via peer sharing mini-protocol.
 
 ### `monitor` section
 

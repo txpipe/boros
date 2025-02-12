@@ -9,6 +9,8 @@ peers = [
     "Node:3001",
     "Node:3001",
 ]
+desired_peer_count = 10
+peers_per_request = 10
 
 [monitor]
 # old tx inflight will be retried when reach a value bigger than retry_slot_diff

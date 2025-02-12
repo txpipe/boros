@@ -4,4 +4,7 @@ cardano-cli
 tx.raw
 tx.signed
 
+
+/js/node_modules/
+
 node_modules/
