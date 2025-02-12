@@ -3,7 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::{
-    ledger::{relay::{MockRelayDataAdapter, RelayDataAdapter}, u5c::{Point, U5cDataAdapterImpl}},
+    ledger::{
+        relay::{MockRelayDataAdapter, RelayDataAdapter},
+        u5c::{Point, U5cDataAdapterImpl},
+    },
     storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
@@ -21,11 +24,17 @@ pub async fn run(
     cursor_storage: Arc<SqliteCursor>,
 ) -> Result<()> {
     let cursor = cursor_storage.current().await?.map(|c| c.into());
-    let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> = Arc::new(MockRelayDataAdapter::new());
+    let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
+        Arc::new(MockRelayDataAdapter::new());
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
     let ingest = ingest::Stage::new(tx_storage.clone());
-    let fanout = fanout::Stage::new(config.peer_manager, relay_adapter.clone(), tx_storage.clone());
+    let fanout = fanout::Stage::new(
+        config.peer_manager,
+        relay_adapter.clone(),
+        u5c_data_adapter.clone(),
+        tx_storage.clone(),
+    );
 
     let monitor = monitor::Stage::new(
         config.monitor,

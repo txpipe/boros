@@ -9,7 +9,10 @@ use thiserror::Error;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::{ledger::relay::RelayDataAdapter, storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus}};
+use crate::{
+    ledger::{relay::RelayDataAdapter, u5c::U5cDataAdapter},
+    storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
+};
 
 pub mod mempool;
 pub mod peer;
@@ -37,17 +40,21 @@ pub enum FanoutUnit {
 pub struct Stage {
     config: PeerManagerConfig,
     relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync>,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
     storage: Arc<SqliteTransaction>,
 }
+
 impl Stage {
     pub fn new(
         config: PeerManagerConfig,
         relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync>,
+        u5c_adapter: Arc<dyn U5cDataAdapter>,
         storage: Arc<SqliteTransaction>,
     ) -> Self {
         Self {
             config,
             relay_adapter,
+            u5c_adapter,
             storage,
         }
     }
@@ -84,8 +91,8 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<WorkSchedule<FanoutUnit>, WorkerError> {
         let desired_count = stage.config.desired_peer_count;
         let peer_per_request = stage.config.peers_per_request;
-        let additional_peers_required = desired_count as usize
-            - self.peer_manager.connected_peers_count().await;
+        let additional_peers_required =
+            desired_count as usize - self.peer_manager.connected_peers_count().await;
 
         if let Some(tx) = stage
             .storage
@@ -101,7 +108,11 @@ impl gasket::framework::Worker<Stage> for Worker {
             info!("Additional Peers Required: {}", additional_peers_required);
             let from_pool_relay = self.relay_adapter.get_relays().await;
             let from_pool_relay = from_pool_relay.choose(&mut rand::rng()).cloned();
-            let from_peer_discovery = self.peer_manager.pick_peer_rand(peer_per_request).await.or_retry()?;
+            let from_peer_discovery = self
+                .peer_manager
+                .pick_peer_rand(peer_per_request)
+                .await
+                .or_retry()?;
 
             let mut rng = rand::rng();
             let chosen_peer = if rng.random_bool(0.5) {
@@ -121,14 +132,20 @@ impl gasket::framework::Worker<Stage> for Worker {
         sleep(Duration::from_secs(1)).await;
         Ok(WorkSchedule::Idle)
     }
-  
+
     async fn execute(&mut self, unit: &FanoutUnit, stage: &mut Stage) -> Result<(), WorkerError> {
         match unit {
             FanoutUnit::Transaction(tx) => {
                 let mut transaction = tx.clone();
                 info!("Propagating Transaction: {}", transaction.id);
+
+                let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
+
                 self.peer_manager.add_tx(transaction.raw.clone()).await;
+
                 transaction.status = TransactionStatus::InFlight;
+                transaction.slot = Some(tip.0);
+
                 stage.storage.update(&transaction).await.or_retry()?;
             }
             FanoutUnit::PeerDiscovery(peer_addr) => {
@@ -145,7 +162,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 pub struct PeerManagerConfig {
     peers: Vec<String>,
     desired_peer_count: u8,
-    peers_per_request: u8
+    peers_per_request: u8,
 }
 
 // Test for Fanout Stage
