@@ -52,8 +52,6 @@ impl Peer {
     }
 
     pub async fn init(&mut self) -> Result<(), PeerError> {
-        self.is_peer_sharing_enabled = self.query_peer_sharing_mode().await?;
-
         let mut client = PeerClient::connect(&self.peer_addr, self.network_magic)
             .await
             .map_err(|e| {
@@ -109,7 +107,7 @@ impl Peer {
         Ok(discovered)
     }
 
-    async fn query_peer_sharing_mode(&self) -> Result<bool, PeerError> {
+    pub async fn query_peer_sharing_mode(&self) -> Result<bool, PeerError> {
         let version_table = PeerClient::handshake_query(&self.peer_addr, self.network_magic)
             .await
             .map_err(|e| {

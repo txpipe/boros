@@ -41,10 +41,17 @@ impl PeerManager {
         let mut peers = self.peers.write().await;
         for (peer_addr, peer) in peers.iter_mut() {
             let mut new_peer = Peer::new(peer_addr, self.network_magic);
+
+            new_peer.is_peer_sharing_enabled = new_peer
+                .query_peer_sharing_mode()
+                .await
+                .map_err(PeerManagerError::PeerInitialization)?;
+
             new_peer
                 .init()
                 .await
                 .map_err(PeerManagerError::PeerInitialization)?;
+            
             *peer = Some(new_peer);
         }
 
@@ -119,7 +126,6 @@ impl PeerManager {
             }
         }
     }
-    
 
     pub async fn connected_peers_count(&self) -> usize {
         let peers = self.peers.read().await;
