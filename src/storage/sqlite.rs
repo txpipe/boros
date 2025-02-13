@@ -42,7 +42,6 @@ impl SqliteStorage {
 impl FromRow<'_, SqliteRow> for Transaction {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         let status: &str = row.try_get("status")?;
-        let priority: u32 = row.try_get("priority")?;
 
         Ok(Self {
             id: row.try_get("id")?,
@@ -50,10 +49,8 @@ impl FromRow<'_, SqliteRow> for Transaction {
             status: status
                 .parse()
                 .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
-            priority: priority
-                .try_into()
-                .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
             slot: row.try_get("slot")?,
+            queue: row.try_get("queue")?,
             dependencies: None,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
@@ -75,7 +72,6 @@ impl SqliteTransaction {
 
         for tx in txs {
             let status = tx.status.clone().to_string();
-            let priority: u32 = tx.priority.clone().try_into()?;
 
             sqlx::query!(
                 r#"
@@ -83,7 +79,7 @@ impl SqliteTransaction {
                         id,
                         raw,
                         status,
-                        priority,
+                        queue,
                         created_at,
                         updated_at
                     )
@@ -92,7 +88,7 @@ impl SqliteTransaction {
                 tx.id,
                 tx.raw,
                 status,
-                priority,
+                tx.queue,
                 tx.created_at,
                 tx.updated_at
             )
@@ -130,7 +126,7 @@ impl SqliteTransaction {
                     	raw,
                     	status,
                         slot,
-                    	priority,
+                    	queue,
                     	created_at,
                     	updated_at
                     FROM
@@ -157,7 +153,7 @@ impl SqliteTransaction {
                     	raw,
                     	status,
                         slot,
-                    	priority,
+                    	queue,
                     	created_at,
                     	updated_at
                     FROM
@@ -182,7 +178,7 @@ impl SqliteTransaction {
                     	raw,
                     	status,
                         slot,
-                    	priority,
+                    	queue,
                     	created_at,
                     	updated_at
                     FROM
@@ -190,7 +186,6 @@ impl SqliteTransaction {
                     WHERE
                     	tx.status = $1
                     ORDER BY
-                    	priority,
                     	created_at ASC
                     LIMIT 1;
             "#,

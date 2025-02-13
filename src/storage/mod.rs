@@ -15,7 +15,7 @@ pub struct Transaction {
     pub id: String,
     pub raw: Vec<u8>,
     pub status: TransactionStatus,
-    pub priority: TransactionPriority,
+    pub queue: Option<String>,
     pub slot: Option<u64>,
     pub dependencies: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
@@ -27,41 +27,11 @@ impl Transaction {
             id,
             raw,
             status: TransactionStatus::Pending,
-            priority: TransactionPriority::Low,
+            queue: Default::default(),
             slot: None,
             dependencies: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub enum TransactionPriority {
-    Low,
-    Medium,
-    High,
-}
-impl TryFrom<u32> for TransactionPriority {
-    type Error = anyhow::Error;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(Self::High),
-            2 => Ok(Self::Medium),
-            3 => Ok(Self::Low),
-            _ => Err(anyhow::Error::msg("transaction priority not supported")),
-        }
-    }
-}
-impl TryFrom<TransactionPriority> for u32 {
-    type Error = anyhow::Error;
-
-    fn try_from(value: TransactionPriority) -> Result<Self, Self::Error> {
-        match value {
-            TransactionPriority::High => Ok(1),
-            TransactionPriority::Medium => Ok(2),
-            TransactionPriority::Low => Ok(3),
         }
     }
 }
@@ -118,7 +88,7 @@ mod tests {
                 id: "hex".into(),
                 raw: "hex".into(),
                 status: TransactionStatus::Pending,
-                priority: TransactionPriority::Low,
+                queue: Default::default(),
                 slot: None,
                 dependencies: None,
                 created_at: Utc::now(),
