@@ -64,7 +64,7 @@ impl MockOuroborosTxSubmitPeerServer {
             return;
         }
 
-        info!("SERVER: init received, now we have agency => requesting TxIds in a loop...");
+        info!("SERVER: init received, now we have agency");
 
         let mut acknowledge = 0u16;
         let count = 3u16;
