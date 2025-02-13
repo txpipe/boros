@@ -1,0 +1,16 @@
+{
+  "name": "boros-test-js",
+  "module": "main.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@blaze-cardano/core": "^0.6.1",
+    "@blaze-cardano/sdk": "^0.2.22",
+    "dotenv": "^16.4.7"
+  }
+}
