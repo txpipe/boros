@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS tx (
   raw BLOB NOT NULL,
   status TEXT NOT NULL,
   slot INTEGER,
-  queue TEXT,
+  queue TEXT NOT NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL
 );
