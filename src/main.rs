@@ -1,5 +1,4 @@
-use std::hash::{Hash, Hasher};
-use std::{collections::HashSet, env, error::Error, path, sync::Arc};
+use std::{env, error::Error, path, sync::Arc};
 
 use anyhow::Result;
 use dotenv::dotenv;
@@ -11,6 +10,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 mod ledger;
 mod pipeline;
+mod priority;
 mod server;
 mod storage;
 
@@ -51,7 +51,7 @@ struct Config {
     peer_manager: pipeline::fanout::PeerManagerConfig,
     monitor: pipeline::monitor::Config,
     #[serde(default)]
-    priority: PriorityConfig,
+    priority: priority::Config,
     u5c: ledger::u5c::Config,
 }
 
@@ -71,52 +71,5 @@ impl Config {
             .then(|| config.priority.queues.insert(Default::default()));
 
         Ok(config)
-    }
-}
-
-const QUOTE: u16 = 40;
-fn default_quote() -> u16 {
-    QUOTE
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[allow(unused)]
-struct PriorityConfig {
-    #[serde(default = "default_quote")]
-    quote: u16,
-    #[serde(default)]
-    queues: HashSet<QueueConfig>,
-}
-impl Default for PriorityConfig {
-    fn default() -> Self {
-        Self {
-            quote: QUOTE,
-            queues: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Clone, Eq)]
-#[allow(unused)]
-struct QueueConfig {
-    name: String,
-    weight: u16,
-}
-impl Default for QueueConfig {
-    fn default() -> Self {
-        Self {
-            name: "default".into(),
-            weight: 1,
-        }
-    }
-}
-impl Hash for QueueConfig {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-impl PartialEq for QueueConfig {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
     }
 }

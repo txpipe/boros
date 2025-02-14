@@ -197,6 +197,41 @@ impl SqliteTransaction {
         Ok(transaction)
     }
 
+    pub async fn next_quote(
+        &self,
+        status: TransactionStatus,
+        queue: &str,
+        quote: usize,
+    ) -> Result<Vec<Transaction>> {
+        let limit = quote as u32;
+        let transactions = sqlx::query_as::<_, Transaction>(
+            r#"
+                    SELECT
+                    	id,
+                    	raw,
+                    	status,
+                        slot,
+                    	queue,
+                    	created_at,
+                    	updated_at
+                    FROM
+                    	tx
+                    WHERE
+                    	tx.status = $1 AND tx.queue = $2
+                    ORDER BY
+                    	created_at ASC
+                    LIMIT $3;
+            "#,
+        )
+        .bind(status.to_string())
+        .bind(queue.to_string())
+        .bind(limit)
+        .fetch_all(&self.sqlite.db)
+        .await?;
+
+        Ok(transactions)
+    }
+
     pub async fn update(&self, tx: &Transaction) -> Result<()> {
         let status = tx.status.to_string();
         let updated_at = Utc::now();

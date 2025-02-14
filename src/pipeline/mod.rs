@@ -21,9 +21,9 @@ pub async fn run(
     cursor_storage: Arc<SqliteCursor>,
 ) -> Result<()> {
     let cursor = cursor_storage.current().await?.map(|c| c.into());
-    let adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
+    let adapter = Arc::new(U5cDataAdapterImpl::try_new(config.clone().u5c, cursor).await?);
 
-    let ingest = ingest::Stage::new(tx_storage.clone());
+    let ingest = ingest::Stage::new(tx_storage.clone(), config.clone().priority);
     let fanout = fanout::Stage::new(config.peer_manager, adapter.clone(), tx_storage.clone());
 
     let monitor = monitor::Stage::new(
