@@ -21,7 +21,7 @@ futures-util = "0.3.31"
 gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["derive"] }
 hex = "0.4.3"
 itertools = "0.14.0"
-pallas = { git = "https://github.com/txpipe/pallas.git" }
+pallas = { git = "https://github.com/txpipe/pallas.git", features = ["applying"] }
 protoc-wkt = "1.0.0"
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"

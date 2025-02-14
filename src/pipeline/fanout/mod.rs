@@ -1,6 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
+use pallas::{
+    applying::{utils::AccountState, Environment},
+    crypto::hash::Hash,
+    ledger::traverse::{wellknown::GenesisValues, MultiEraInput, MultiEraTx},
+};
 use peer::PeerError;
 use peer_manager::{PeerManager, PeerManagerError};
 use rand::{seq::IndexedRandom, Rng};
@@ -61,6 +66,40 @@ impl Stage {
             storage,
             priority,
         }
+    }
+
+    #[allow(dead_code)]
+    async fn validate<'a>(&self, tx: &MultiEraTx<'a>) -> Result<(), FanoutError> {
+        let (slot, hash_vec) = self.u5c_adapter.fetch_tip().await.or_retry()?;
+        let hash_vec: [u8; 32] = hash_vec.try_into().unwrap();
+        let hash: Hash<32> = Hash::from(hash_vec);
+
+        let tip = (slot, hash);
+
+        let network_magic = 2;
+
+        let pparams = self.u5c_adapter.get_pparams().await.or_retry()?;
+
+        let genesis_values = GenesisValues::from_magic(network_magic.into()).unwrap();
+
+        let _env = Environment {
+            prot_params: pparams.clone(),
+            prot_magic: network_magic,
+            block_slot: tip.0,
+            network_id: genesis_values.network_id as u8,
+            acnt: Some(AccountState::default()),
+        };
+
+        let _input_refs = tx
+            .requires()
+            .iter()
+            .map(|input: &MultiEraInput<'_>| (*input.hash(), input.index() as u32))
+            .collect::<Vec<(Hash<32>, u32)>>();
+
+        // TODO: Fetch UTxOs from the U5C
+        // validate_tx(tx, 0, &env, &pallas_utxos, &mut CertState::default())?;
+
+        Ok(())
     }
 }
 

@@ -2,13 +2,19 @@ use std::{collections::HashMap, pin::Pin, str::FromStr};
 
 use anyhow::bail;
 use async_stream::stream;
+use chrono::{offset, DateTime, FixedOffset, NaiveDateTime};
 use futures::{Stream, TryStreamExt};
-use pallas::interop::utxorpc::spec::{
-    cardano::Tx,
-    sync::{
-        any_chain_block, follow_tip_response, sync_service_client::SyncServiceClient, BlockRef,
-        FollowTipRequest, ReadTipRequest,
+use pallas::{
+    applying::{utils::{ByronProtParams, ShelleyProtParams}, MultiEraProtocolParameters},
+    interop::utxorpc::spec::{
+        cardano::Tx,
+        query::{any_chain_params, query_service_client::QueryServiceClient, ReadParamsRequest},
+        sync::{
+            any_chain_block, follow_tip_response, sync_service_client::SyncServiceClient, BlockRef,
+            FollowTipRequest, ReadTipRequest,
+        },
     },
+    ledger::primitives::{Nonce, NonceVariant, RationalNumber},
 };
 use serde::Deserialize;
 use tonic::{
@@ -40,6 +46,7 @@ pub trait U5cDataAdapter: Send + Sync {
     async fn fetch_tip(&self) -> anyhow::Result<Point>;
     async fn fetch_utxos(&self, utxo_refs: &[String]) -> anyhow::Result<HashMap<String, Vec<u8>>>;
     async fn stream(&self) -> anyhow::Result<ChainSyncStream>;
+    async fn get_pparams(&self) -> Result<MultiEraProtocolParameters, anyhow::Error>;
 }
 
 pub struct U5cDataAdapterImpl {
@@ -97,6 +104,94 @@ impl U5cDataAdapter for U5cDataAdapterImpl {
     }
     async fn fetch_utxos(&self, _utxo_refs: &[String]) -> anyhow::Result<HashMap<String, Vec<u8>>> {
         todo!()
+    }
+
+    async fn get_pparams(&self) -> Result<MultiEraProtocolParameters, anyhow::Error> {
+        let mut client = QueryServiceClient::with_interceptor(
+            self.channel.clone(),
+            move |mut req: Request<()>| {
+                self.interceptor(&mut req);
+                Ok(req)
+            },
+        );
+
+        let response = client
+            .read_params(tonic::Request::new(ReadParamsRequest { field_mask: None }))
+            .await?
+            .into_inner();
+
+        let pparams = response.values.unwrap_or_default();
+        let pparams = pparams.params.unwrap();
+        let _byron_pparams = match pparams.clone() {
+            any_chain_params::Params::Cardano(params) => ByronProtParams {
+                block_version: (0, 0, 0),
+                start_time: 0,
+                script_version: 0,
+                slot_duration: 0,
+                max_block_size: params.max_block_body_size + params.max_block_header_size,
+                max_header_size: params.max_block_header_size,
+                max_tx_size: params.max_tx_size,
+                max_proposal_size: 0,
+                mpc_thd: 0,
+                heavy_del_thd: 0,
+                update_vote_thd: 0,
+                update_proposal_thd: 0,
+                update_implicit: 0,
+                soft_fork_rule: (0, 0, 0),
+                summand: 0,
+                multiplier: 0,
+                unlock_stake_epoch: 0,
+            },
+        };
+        let _shelley_pparams = match pparams.clone() {
+            any_chain_params::Params::Cardano(params) => {
+                let monetary_expansion = params.monetary_expansion.unwrap();
+                let treasury_expansion = params.treasury_expansion.unwrap();
+                let pool_influence = params.pool_influence.unwrap();
+                ShelleyProtParams {
+                    system_start: DateTime::<FixedOffset>::from_naive_utc_and_offset(NaiveDateTime::default(), offset::FixedOffset::east_opt(0).unwrap()),
+                    epoch_length: 0, 
+                    slot_length: 0,
+                    minfee_a: params.min_fee_coefficient as u32,
+                    minfee_b: params.min_fee_constant as u32,
+                    max_block_body_size: params.max_block_body_size as u32,
+                    max_transaction_size: params.max_tx_size as u32,
+                    max_block_header_size: params.max_block_header_size as u32,
+                    key_deposit: params.stake_key_deposit,
+                    pool_deposit: params.pool_deposit,
+                    desired_number_of_stake_pools: params.desired_number_of_pools as u32,
+                    protocol_version: { let proto = params.protocol_version.as_ref().unwrap(); (proto.major as u64, proto.minor as u64) },
+                    min_utxo_value: 0,
+                    min_pool_cost: params.min_pool_cost,
+                    expansion_rate: RationalNumber {
+                        numerator: monetary_expansion.numerator as u64,
+                        denominator: monetary_expansion.denominator as u64,
+                    },
+                    treasury_growth_rate: RationalNumber {
+                        numerator: treasury_expansion.numerator as u64,
+                        denominator: treasury_expansion.denominator as u64,
+                    },
+                    maximum_epoch: 0,
+                    pool_pledge_influence: RationalNumber {
+                        numerator: pool_influence.numerator as u64,
+                        denominator: pool_influence.denominator as u64,
+                    },
+                    decentralization_constant: RationalNumber {
+                        numerator: 0,
+                        denominator: 0,
+                    },
+                    extra_entropy: Nonce { variant: NonceVariant::Nonce , hash: None },
+                }
+            },
+        };
+        // let _alonzo_pparams = todo!();
+        // let _babbage_pparams = todo!();
+        // let _conway_pparams = todo!();
+
+        // need to understand this because it is not clear
+        let multiera_pparams = MultiEraProtocolParameters::Byron(_byron_pparams);
+
+        Ok(multiera_pparams)
     }
 
     async fn stream(&self) -> anyhow::Result<ChainSyncStream> {
@@ -195,6 +290,10 @@ mod u5c_tests {
             }
 
             Ok(result)
+        }
+
+        async fn get_pparams(&self) -> Result<MultiEraProtocolParameters, anyhow::Error> {
+            todo!()
         }
 
         async fn stream(&self) -> anyhow::Result<ChainSyncStream> {
