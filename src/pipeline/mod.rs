@@ -28,7 +28,7 @@ pub async fn run(
         Arc::new(MockRelayDataAdapter::new());
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
-    let ingest = ingest::Stage::new(tx_storage.clone());
+    let ingest = ingest::Stage::new(tx_storage.clone(), config.priority);
     let fanout = fanout::Stage::new(
         config.peer_manager,
         relay_adapter.clone(),

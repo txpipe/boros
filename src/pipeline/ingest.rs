@@ -64,17 +64,17 @@ impl gasket::framework::Worker<Stage> for Worker {
 
     async fn execute(
         &mut self,
-        unit: &Vec<Transaction>,
-        stage: &mut Stage,
+        _unit: &Vec<Transaction>,
+        _stage: &mut Stage,
     ) -> Result<(), WorkerError> {
-        todo!();
+        //todo!();
 
+        info!("ingest");
         //let mut transaction = unit.clone();
-        //info!("ingest {}", transaction.id);
         //
         //transaction.status = TransactionStatus::Validated;
         //stage.storage.update(&transaction).await.or_retry()?;
         //
-        //Ok(())
+        Ok(())
     }
 }
