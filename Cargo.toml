@@ -21,12 +21,12 @@ futures-util = "0.3.31"
 gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["derive"] }
 hex = "0.4.3"
 itertools = "0.14.0"
-pallas = "0.32.0"
+pallas = { git = "https://github.com/txpipe/pallas.git" }
 protoc-wkt = "1.0.0"
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"
 sqlx = { version = "0.8.3", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
-tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "time"] }
 tonic = { version = "0.12.3", features = ["transport", "tls", "tls-webpki-roots", "tls-roots"] }
 tonic-reflection = "0.12.3"
 tracing = "0.1.41"
@@ -34,3 +34,5 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 futures = "0.3.31"
 serde_json = "1.0.138"
 async-stream = "0.3.6"
+tokio-stream = "0.1.17"
+rand = "0.9.0"
