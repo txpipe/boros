@@ -1,5 +1,5 @@
 ---
-title: Pipeline Fanout - Docs
+title: Fanout
 sidebarTitle: Fanout
 ---
 

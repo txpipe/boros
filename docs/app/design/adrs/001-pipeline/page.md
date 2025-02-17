@@ -1,7 +1,6 @@
 ---
 title: Pipeline
 sidebarTitle: Pipeline
-asIndexPage: true
 ---
 
 # Decision to choose a way to have a data pipeline process
