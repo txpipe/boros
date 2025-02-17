@@ -5,7 +5,7 @@ use tokio::time::sleep;
 use tracing::info;
 
 use crate::{
-    priority::{self, distribute_quote},
+    priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
 
@@ -13,11 +13,11 @@ use crate::{
 #[stage(name = "ingest", unit = "Vec<Transaction>", worker = "Worker")]
 pub struct Stage {
     storage: Arc<SqliteTransaction>,
-    priority: priority::Config,
+    priority: Arc<Priority>,
 }
 
 impl Stage {
-    pub fn new(storage: Arc<SqliteTransaction>, priority: priority::Config) -> Self {
+    pub fn new(storage: Arc<SqliteTransaction>, priority: Arc<Priority>) -> Self {
         Self { storage, priority }
     }
 }
@@ -34,25 +34,11 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<Vec<Transaction>>, WorkerError> {
-        let dist_quote = distribute_quote(stage.priority.clone());
-
-        let mut leftover = 0;
-        let mut transactions: Vec<Transaction> = Vec::new();
-
-        for (queue, quote) in dist_quote {
-            let current_quote = quote + leftover;
-
-            let mut quote_transactions = stage
-                .storage
-                .next_quote(TransactionStatus::Pending, &queue, current_quote)
-                .await
-                .or_retry()?;
-
-            let used_quote = transactions.len();
-            leftover = current_quote - used_quote;
-
-            transactions.append(&mut quote_transactions);
-        }
+        let transactions = stage
+            .priority
+            .next(TransactionStatus::Pending)
+            .await
+            .or_retry()?;
 
         if !transactions.is_empty() {
             return Ok(WorkSchedule::Unit(transactions));

@@ -4,7 +4,7 @@ use anyhow::{Error, Result};
 use chrono::Utc;
 use sqlx::{sqlite::SqliteRow, FromRow, Row};
 
-use super::{Cursor, Transaction, TransactionStatus};
+use super::{Cursor, Transaction, TransactionState, TransactionStatus};
 
 pub struct SqliteStorage {
     db: sqlx::sqlite::SqlitePool,
@@ -54,6 +54,16 @@ impl FromRow<'_, SqliteRow> for Transaction {
             dependencies: None,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
+        })
+    }
+}
+
+impl FromRow<'_, SqliteRow> for TransactionState {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        let count: u32 = row.try_get("count")?;
+        Ok(Self {
+            queue: row.try_get("queue")?,
+            count: count as usize,
         })
     }
 }
@@ -230,6 +240,27 @@ impl SqliteTransaction {
         .await?;
 
         Ok(transactions)
+    }
+
+    pub async fn state(&self, status: TransactionStatus) -> Result<Vec<TransactionState>> {
+        let state = sqlx::query_as::<_, TransactionState>(
+            r#"
+                    SELECT
+                    	queue,
+                    	COUNT(*) as count
+                    FROM
+                    	tx
+                    WHERE
+                    	tx.status = $1
+                    GROUP BY
+                    	tx.queue;
+            "#,
+        )
+        .bind(status.to_string())
+        .fetch_all(&self.sqlite.db)
+        .await?;
+
+        Ok(state)
     }
 
     pub async fn update(&self, tx: &Transaction) -> Result<()> {

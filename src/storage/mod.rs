@@ -3,6 +3,8 @@ use std::{fmt::Display, str::FromStr};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
+use crate::priority::DEFAULT_QUEUE;
+
 pub mod sqlite;
 
 #[derive(Deserialize, Clone)]
@@ -15,7 +17,7 @@ pub struct Transaction {
     pub id: String,
     pub raw: Vec<u8>,
     pub status: TransactionStatus,
-    pub queue: Option<String>,
+    pub queue: String,
     pub slot: Option<u64>,
     pub dependencies: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
@@ -26,8 +28,9 @@ impl Transaction {
         Self {
             id,
             raw,
-            status: TransactionStatus::Pending,
-            queue: Default::default(),
+            //status: TransactionStatus::Pending,
+            status: TransactionStatus::Validated,
+            queue: DEFAULT_QUEUE.into(),
             slot: None,
             dependencies: None,
             created_at: Utc::now(),
@@ -68,6 +71,12 @@ impl Display for TransactionStatus {
 }
 
 #[derive(Clone)]
+pub struct TransactionState {
+    pub queue: String,
+    pub count: usize,
+}
+
+#[derive(Clone)]
 pub struct Cursor {
     pub slot: u64,
     pub hash: Vec<u8>,
@@ -88,7 +97,7 @@ mod tests {
                 id: "hex".into(),
                 raw: "hex".into(),
                 status: TransactionStatus::Pending,
-                queue: Default::default(),
+                queue: DEFAULT_QUEUE.into(),
                 slot: None,
                 dependencies: None,
                 created_at: Utc::now(),
