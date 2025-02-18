@@ -11,6 +11,7 @@ use tracing::info;
 
 use crate::{
     ledger::{relay::RelayDataAdapter, u5c::U5cDataAdapter},
+    priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
 
@@ -31,7 +32,7 @@ pub enum FanoutError {
 }
 
 pub enum FanoutUnit {
-    Transaction(Transaction),
+    Transactions(Vec<Transaction>),
     PeerDiscovery(String),
 }
 
@@ -42,6 +43,7 @@ pub struct Stage {
     relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
     storage: Arc<SqliteTransaction>,
+    priority: Arc<Priority>,
 }
 
 impl Stage {
@@ -50,12 +52,14 @@ impl Stage {
         relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
         storage: Arc<SqliteTransaction>,
+        priority: Arc<Priority>,
     ) -> Self {
         Self {
             config,
             relay_adapter,
             u5c_adapter,
             storage,
+            priority,
         }
     }
 }
@@ -94,14 +98,14 @@ impl gasket::framework::Worker<Stage> for Worker {
         let additional_peers_required =
             desired_count as usize - self.peer_manager.connected_peers_count().await;
 
-        if let Some(tx) = stage
-            .storage
+        let transactions = stage
+            .priority
             .next(TransactionStatus::Validated)
             .await
-            .or_retry()?
-        {
-            info!("Found Transaction: {}", tx.id);
-            return Ok(WorkSchedule::Unit(FanoutUnit::Transaction(tx)));
+            .or_retry()?;
+
+        if !transactions.is_empty() {
+            return Ok(WorkSchedule::Unit(FanoutUnit::Transactions(transactions)));
         }
 
         if self.peer_discovery_queue < additional_peers_required as u8 {
@@ -135,18 +139,20 @@ impl gasket::framework::Worker<Stage> for Worker {
 
     async fn execute(&mut self, unit: &FanoutUnit, stage: &mut Stage) -> Result<(), WorkerError> {
         match unit {
-            FanoutUnit::Transaction(tx) => {
-                let mut transaction = tx.clone();
-                info!("Propagating Transaction: {}", transaction.id);
+            FanoutUnit::Transactions(transactions) => {
+                for transaction in transactions {
+                    let mut transaction = transaction.clone();
+                    info!("Propagating Transaction: {}", transaction.id);
 
-                let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
+                    let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
 
-                self.peer_manager.add_tx(transaction.raw.clone()).await;
+                    self.peer_manager.add_tx(transaction.raw.clone()).await;
 
-                transaction.status = TransactionStatus::InFlight;
-                transaction.slot = Some(tip.0);
+                    transaction.status = TransactionStatus::InFlight;
+                    transaction.slot = Some(tip.0);
 
-                stage.storage.update(&transaction).await.or_retry()?;
+                    stage.storage.update(&transaction).await.or_retry()?;
+                }
             }
             FanoutUnit::PeerDiscovery(peer_addr) => {
                 info!("Connecting to peer: {}", peer_addr);

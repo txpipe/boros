@@ -50,17 +50,22 @@ impl gasket::framework::Worker<Stage> for Worker {
 
     async fn execute(
         &mut self,
-        _unit: &Vec<Transaction>,
-        _stage: &mut Stage,
+        unit: &Vec<Transaction>,
+        stage: &mut Stage,
     ) -> Result<(), WorkerError> {
-        //todo!();
+        info!("validating {} transactions", unit.len());
 
-        info!("ingest");
-        //let mut transaction = unit.clone();
-        //
-        //transaction.status = TransactionStatus::Validated;
-        //stage.storage.update(&transaction).await.or_retry()?;
-        //
+        let transactions = unit
+            .iter()
+            .map(|tx| {
+                let mut tx = tx.clone();
+                tx.status = TransactionStatus::Validated;
+                tx
+            })
+            .collect();
+
+        stage.storage.update_batch(&transactions).await.or_retry()?;
+
         Ok(())
     }
 }

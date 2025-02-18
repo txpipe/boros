@@ -12,7 +12,7 @@ pub struct Config {
     pub db_path: String,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Transaction {
     pub id: String,
     pub raw: Vec<u8>,
@@ -39,7 +39,7 @@ impl Transaction {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum TransactionStatus {
     Pending,
     Validated,

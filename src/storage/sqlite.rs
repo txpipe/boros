@@ -1,7 +1,8 @@
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::{Error, Result};
 use chrono::Utc;
+use itertools::Itertools;
 use sqlx::{sqlite::SqliteRow, FromRow, Row};
 
 use super::{Cursor, Transaction, TransactionState, TransactionStatus};
@@ -180,64 +181,50 @@ impl SqliteTransaction {
         Ok(transactions)
     }
 
-    pub async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
-        let transaction = sqlx::query_as::<_, Transaction>(
-            r#"
-                    SELECT
-                    	id,
-                    	raw,
-                    	status,
-                        slot,
-                    	queue,
-                    	created_at,
-                    	updated_at
-                    FROM
-                    	tx
-                    WHERE
-                    	tx.status = $1
-                    ORDER BY
-                    	created_at ASC
-                    LIMIT 1;
-            "#,
-        )
-        .bind(status.to_string())
-        .fetch_optional(&self.sqlite.db)
-        .await?;
-
-        Ok(transaction)
-    }
-
-    pub async fn next_quote(
+    pub async fn next(
         &self,
         status: TransactionStatus,
-        queue: &str,
-        quote: usize,
+        queues: HashMap<String, usize>,
     ) -> Result<Vec<Transaction>> {
-        let limit = quote as u32;
-        let transactions = sqlx::query_as::<_, Transaction>(
-            r#"
-                    SELECT
-                    	id,
-                    	raw,
-                    	status,
-                        slot,
-                    	queue,
-                    	created_at,
-                    	updated_at
-                    FROM
-                    	tx
-                    WHERE
-                    	tx.status = $1 AND tx.queue = $2
-                    ORDER BY
-                    	created_at ASC
-                    LIMIT $3;
-            "#,
-        )
-        .bind(status.to_string())
-        .bind(queue.to_string())
-        .bind(limit)
-        .fetch_all(&self.sqlite.db)
-        .await?;
+        let mut param_index = 2;
+        let query = queues
+            .iter()
+            .map(|_| {
+                let queue_param = param_index;
+                let limit_param = param_index + 1;
+                param_index += 2;
+                format!(
+                    r#"
+                        SELECT
+                        	id,
+                        	raw,
+                        	status,
+                        	slot,
+                        	queue,
+                        	created_at,
+                        	updated_at
+                        FROM (
+                        	SELECT
+                        		*
+                        	FROM
+                        		tx
+                        	WHERE
+                        		tx.status = $1 AND tx.queue = ${}
+                        	ORDER BY
+                        		created_at
+                        	LIMIT ${}
+                        )
+                    "#,
+                    queue_param, limit_param
+                )
+            })
+            .join("UNION ALL");
+
+        let mut q = sqlx::query_as::<_, Transaction>(&query).bind(status.to_string());
+        for (queue, limit) in queues {
+            q = q.bind(queue).bind(limit as u32);
+        }
+        let transactions = q.fetch_all(&self.sqlite.db).await?;
 
         Ok(transactions)
     }

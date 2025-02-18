@@ -28,6 +28,7 @@ pub async fn run(
     let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
         Arc::new(MockRelayDataAdapter::new());
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
+
     let priority = Arc::new(Priority::new(tx_storage.clone(), config.priority));
 
     let ingest = ingest::Stage::new(tx_storage.clone(), priority.clone());
@@ -36,6 +37,7 @@ pub async fn run(
         relay_adapter.clone(),
         u5c_data_adapter.clone(),
         tx_storage.clone(),
+        priority.clone(),
     );
 
     let monitor = monitor::Stage::new(

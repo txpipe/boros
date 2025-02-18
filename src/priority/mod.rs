@@ -40,8 +40,8 @@ impl Priority {
     }
 
     pub async fn next(&self, status: TransactionStatus) -> anyhow::Result<Vec<Transaction>> {
-        let state = self.storage.state(status).await?;
-        let active_queues = state
+        let state = self.storage.state(status.clone()).await?;
+        let state_queues = state
             .iter()
             .map(|s| {
                 let weight = self
@@ -53,9 +53,9 @@ impl Priority {
                 (s.queue.clone(), weight)
             })
             .collect();
-        let quotes = self.quotes(active_queues);
+        let quotes = self.quotes(state_queues);
         let mut leftover = 0;
-        let mut queue_limit: HashMap<String, usize> = HashMap::new();
+        let mut queue_limit = HashMap::new();
         for (queue, quote) in quotes {
             let current_quote = quote + leftover;
             let current_state = state.iter().find(|s| s.queue.eq(&queue)).unwrap();
@@ -64,9 +64,8 @@ impl Priority {
             leftover = current_quote - used_quote;
         }
 
-        dbg!(queue_limit);
-
-        Ok(Default::default())
+        let transactions = self.storage.next(status, queue_limit).await?;
+        Ok(transactions)
     }
 }
 
