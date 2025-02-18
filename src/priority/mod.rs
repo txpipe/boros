@@ -56,7 +56,6 @@ impl Priority {
             .collect();
 
         let quotes = self.quotes(state_queues);
-        dbg!(&quotes);
         let mut leftover = 0;
         let mut queue_limit = HashMap::new();
         for (queue, quote) in quotes {
