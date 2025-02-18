@@ -42,6 +42,10 @@ impl Priority {
 
     pub async fn next(&self, status: TransactionStatus) -> anyhow::Result<Vec<Transaction>> {
         let state = self.storage.state(status.clone()).await?;
+        if state.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let state_queues = state
             .iter()
             .map(|s| {
