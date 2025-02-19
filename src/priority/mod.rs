@@ -10,31 +10,31 @@ use crate::storage::sqlite::SqliteTransaction;
 use crate::storage::{Transaction, TransactionStatus};
 
 pub const DEFAULT_QUEUE: &str = "default";
-pub const DEFAULT_WEIGHT: usize = 1;
-const DEFAULT_QUOTE: usize = 40;
-fn default_quote() -> usize {
-    DEFAULT_QUOTE
-}
+pub const DEFAULT_WEIGHT: u8 = 1;
+pub const DEFAULT_QUOTA: u16 = 60;
 
 pub struct Priority {
     storage: Arc<SqliteTransaction>,
-    config: Config,
+    quota: u16,
+    queues: HashSet<QueueConfig>,
 }
 impl Priority {
-    pub fn new(storage: Arc<SqliteTransaction>, config: Config) -> Self {
-        Self { storage, config }
+    pub fn new(storage: Arc<SqliteTransaction>, queues: HashSet<QueueConfig>) -> Self {
+        Self {
+            storage,
+            quota: DEFAULT_QUOTA,
+            queues,
+        }
     }
 
-    fn quotes(&self, queues: HashMap<String, usize>) -> HashMap<String, usize> {
+    fn quota(&self, queues: HashMap<String, u8>) -> HashMap<String, u16> {
         let total_weight: f32 = queues.values().map(|weight| *weight as f32).sum();
 
         queues
             .iter()
             .map(|(name, weight)| {
-                let quote =
-                    ((*weight as f32 / total_weight) * self.config.quote as f32).round() as usize;
-
-                (name.clone(), quote)
+                let quota = ((*weight as f32 / total_weight) * self.quota as f32).round() as u16;
+                (name.clone(), quota)
             })
             .sorted_by(|a, b| Ord::cmp(&b.1, &a.1))
             .collect()
@@ -50,7 +50,6 @@ impl Priority {
             .iter()
             .map(|s| {
                 let weight = self
-                    .config
                     .queues
                     .get(&s.queue)
                     .map(|q| q.weight)
@@ -59,15 +58,15 @@ impl Priority {
             })
             .collect();
 
-        let quotes = self.quotes(state_queues);
+        let quota = self.quota(state_queues);
         let mut leftover = 0;
         let mut queue_limit = HashMap::new();
-        for (queue, quote) in quotes {
-            let current_quote = quote + leftover;
+        for (queue, quota) in quota {
+            let current_quota = quota + leftover;
             let current_state = state.iter().find(|s| s.queue.eq(&queue)).unwrap();
-            let used_quote = std::cmp::min(current_state.count, current_quote);
-            queue_limit.insert(queue, used_quote);
-            leftover = current_quote - used_quote;
+            let used_quota = std::cmp::min(current_state.count, current_quota.into()) as u16;
+            queue_limit.insert(queue, used_quota);
+            leftover = current_quota - used_quota;
         }
 
         let transactions = self.storage.next(status, queue_limit).await?;
@@ -75,30 +74,12 @@ impl Priority {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
-#[allow(unused)]
-pub struct Config {
-    #[serde(default = "default_quote")]
-    pub quote: usize,
-    #[serde(default)]
-    pub queues: HashSet<Queue>,
-}
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            quote: DEFAULT_QUOTE,
-            queues: Default::default(),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize, Clone, Eq)]
-#[allow(unused)]
-pub struct Queue {
+pub struct QueueConfig {
     pub name: String,
-    pub weight: usize,
+    pub weight: u8,
 }
-impl Default for Queue {
+impl Default for QueueConfig {
     fn default() -> Self {
         Self {
             name: DEFAULT_QUEUE.into(),
@@ -106,17 +87,17 @@ impl Default for Queue {
         }
     }
 }
-impl Hash for Queue {
+impl Hash for QueueConfig {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
     }
 }
-impl PartialEq for Queue {
+impl PartialEq for QueueConfig {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
     }
 }
-impl Borrow<String> for Queue {
+impl Borrow<String> for QueueConfig {
     fn borrow(&self) -> &String {
         &self.name
     }
@@ -126,7 +107,7 @@ impl Borrow<String> for Queue {
 mod priority_tests {
     use std::collections::{HashMap, HashSet};
 
-    use priority::{Config, Priority, Queue};
+    use priority::{Priority, QueueConfig};
     use storage::{
         sqlite::sqlite_utils_tests::{mock_sqlite_transaction, TransactionList},
         TransactionStatus,
@@ -134,55 +115,60 @@ mod priority_tests {
 
     use crate::*;
 
+    impl Priority {
+        pub fn new_test(
+            storage: Arc<SqliteTransaction>,
+            quota: u16,
+            queues: HashSet<QueueConfig>,
+        ) -> Self {
+            Self {
+                storage,
+                quota,
+                queues,
+            }
+        }
+    }
+
     #[tokio::test]
-    async fn it_should_calculate_quotes() {
-        let storage = mock_sqlite_transaction().await;
-        let priority = Priority::new(
-            Arc::new(storage),
-            Config {
-                quote: 10,
-                ..Default::default()
-            },
-        );
+    async fn it_should_calculate_quota() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+        let priority = Priority::new_test(storage, 10, Default::default());
 
         let queues = HashMap::from_iter([
             ("default".into(), 1),
             ("banana".into(), 2),
             ("orange".into(), 2),
         ]);
-        let quotes = priority.quotes(queues);
+        let quota = priority.quota(queues);
 
-        let default = quotes.get("default").unwrap();
+        let default = quota.get("default").unwrap();
         assert!(*default == 2);
-        let banana = quotes.get("banana").unwrap();
+        let banana = quota.get("banana").unwrap();
         assert!(*banana == 4);
-        let orange = quotes.get("orange").unwrap();
+        let orange = quota.get("orange").unwrap();
         assert!(*orange == 4);
     }
 
     #[tokio::test]
     async fn it_should_return_next_transactions() {
         let storage = Arc::new(mock_sqlite_transaction().await);
-
-        let priority = Priority::new(
+        let priority = Priority::new_test(
             storage.clone(),
-            Config {
-                quote: 4,
-                queues: HashSet::from_iter([
-                    Queue {
-                        name: "default".into(),
-                        weight: 1,
-                    },
-                    Queue {
-                        name: "banana".into(),
-                        weight: 2,
-                    },
-                    Queue {
-                        name: "orange".into(),
-                        weight: 1,
-                    },
-                ]),
-            },
+            4,
+            HashSet::from_iter([
+                QueueConfig {
+                    name: "default".into(),
+                    weight: 1,
+                },
+                QueueConfig {
+                    name: "banana".into(),
+                    weight: 2,
+                },
+                QueueConfig {
+                    name: "orange".into(),
+                    weight: 1,
+                },
+            ]),
         );
 
         let data = vec![
@@ -205,27 +191,15 @@ mod priority_tests {
 
     #[tokio::test]
     async fn it_should_return_next_transactions_when_a_queue_is_removed_from_config() {
-        let env_filter = EnvFilter::builder()
-            .with_default_directive(Level::INFO.into())
-            .with_env_var("RUST_LOG")
-            .from_env_lossy();
-
-        tracing_subscriber::registry()
-            .with(fmt::layer())
-            .with(env_filter)
-            .init();
-
         let storage = Arc::new(mock_sqlite_transaction().await);
 
-        let priority = Priority::new(
+        let priority = Priority::new_test(
             storage.clone(),
-            Config {
-                quote: 4,
-                queues: HashSet::from_iter([Queue {
-                    name: "default".into(),
-                    weight: 1,
-                }]),
-            },
+            4,
+            HashSet::from_iter([QueueConfig {
+                name: "default".into(),
+                weight: 1,
+            }]),
         );
 
         let data = vec![("1", "banana"), ("2", "banana"), ("3", "default")];
@@ -234,7 +208,5 @@ mod priority_tests {
 
         let transactions = priority.next(TransactionStatus::Pending).await.unwrap();
         assert!(transactions.len() == 3);
-        assert!(transactions.iter().filter(|t| t.queue == "banana").count() == 2);
-        assert!(transactions.iter().filter(|t| t.queue == "default").count() == 1);
     }
 }

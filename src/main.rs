@@ -1,7 +1,8 @@
-use std::{env, error::Error, path, sync::Arc};
+use std::{collections::HashSet, env, error::Error, path, sync::Arc};
 
 use anyhow::Result;
 use dotenv::dotenv;
+use priority::DEFAULT_QUEUE;
 use serde::Deserialize;
 use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
@@ -50,8 +51,9 @@ struct Config {
     storage: storage::Config,
     peer_manager: pipeline::fanout::PeerManagerConfig,
     monitor: pipeline::monitor::Config,
+    //priority: priority::Config,
     #[serde(default)]
-    priority: priority::Config,
+    queues: HashSet<priority::QueueConfig>,
     u5c: ledger::u5c::Config,
 }
 
@@ -67,8 +69,8 @@ impl Config {
             .build()?
             .try_deserialize()?;
 
-        (!config.priority.queues.iter().any(|q| q.name == "default"))
-            .then(|| config.priority.queues.insert(Default::default()));
+        (!config.queues.iter().any(|q| q.name == DEFAULT_QUEUE))
+            .then(|| config.queues.insert(Default::default()));
 
         Ok(config)
     }

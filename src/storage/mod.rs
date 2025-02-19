@@ -73,7 +73,7 @@ impl Display for TransactionStatus {
 #[derive(Clone)]
 pub struct TransactionState {
     pub queue: String,
-    pub count: usize,
+    pub count: u32,
 }
 
 #[derive(Clone)]

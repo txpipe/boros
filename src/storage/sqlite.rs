@@ -61,10 +61,9 @@ impl FromRow<'_, SqliteRow> for Transaction {
 
 impl FromRow<'_, SqliteRow> for TransactionState {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
-        let count: u32 = row.try_get("count")?;
         Ok(Self {
             queue: row.try_get("queue")?,
-            count: count as usize,
+            count: row.try_get("count")?,
         })
     }
 }
@@ -184,7 +183,7 @@ impl SqliteTransaction {
     pub async fn next(
         &self,
         status: TransactionStatus,
-        queues: HashMap<String, usize>,
+        queues: HashMap<String, u16>,
     ) -> Result<Vec<Transaction>> {
         let mut param_index = 2;
         let query = queues
@@ -222,7 +221,7 @@ impl SqliteTransaction {
 
         let mut q = sqlx::query_as::<_, Transaction>(&query).bind(status.to_string());
         for (queue, limit) in queues {
-            q = q.bind(queue).bind(limit as u32);
+            q = q.bind(queue).bind(limit);
         }
         let transactions = q.fetch_all(&self.sqlite.db).await?;
 

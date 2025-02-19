@@ -29,7 +29,7 @@ pub async fn run(
         Arc::new(MockRelayDataAdapter::new());
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
-    let priority = Arc::new(Priority::new(tx_storage.clone(), config.priority));
+    let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues));
 
     let ingest = ingest::Stage::new(tx_storage.clone(), priority.clone());
     let fanout = fanout::Stage::new(
