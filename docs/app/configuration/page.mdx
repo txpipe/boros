@@ -36,6 +36,13 @@ uri = "https://mainnet.utxorpc-v0.demeter.run"
 # metadata is optional
 [u5c.metadata]
 "dmtr-api-key" = "your key"
+
+# optional config
+[priority]
+quote = 5
+[[priority.queues]]
+name = "banana"
+weight = 2
 ```
 
 ### `storage` section
@@ -101,6 +108,28 @@ The `u5c.metadata` section is optional and defines metadata for U5C connection, 
 | key         | string | "value" |
 
 - `key`: a string value.
+
+### `priority` section
+
+The `priority` section defines the options for queues to sort.
+
+| property | type    | example |
+| -------- | ------- | ------- |
+| quote    | number  | 5       |
+
+- `quote`: the limit of transactions that can be waiting for propagation in fanout stage.
+
+### `priority.queues` section
+
+The `priority.queues` section defines the options to create queues.
+
+| property | type    | example    |
+| -------- | ------- | ---------- |
+| name     | string  | queue_name |
+| weight   | number  | 2          |
+
+- `name`: queue name that can be used in sending transactions.
+- `weight`: the weight of the queue. A queue with a bigger weight will have more priority to process transactions.
 
 ## Tips
 

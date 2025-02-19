@@ -1,0 +1,16 @@
+---
+title: Priority Queues
+sidebarTitle: Priority Queues
+---
+
+## Priority Queues
+
+With the Priority module, Boros allows users to configure queues to prioritise transactions. Each queue has a weight that Boros uses to calculate how many slots of the quote a queue can use. For transactions where there's no queue, a default queue is set. When a queue is removed from the file and Boros still has transactions pending for the queue removed, Boros uses the default queue weight to process unknown queues. The quote is set by default but can be replaced by setting the quote config.
+
+Follow the [configuration](../configuration) to configure the priority queues.
+
+### Example
+The quote is 10, so the fanout stage has a backpressure of 10, meaning only 10 transactions can be waiting for propagation. The quote is released when transactions are sent, allowing new transactions to wait. Furthermore, two queues are configured: Queue A with a weight of 3 and Queue B with a weight of 2. Queue A has higher priority than Queue B, so Queue A receives 6 slots and Queue B receives 4 slots from the quote.
+
+### Default
+Priority configurations are not required. If not configured, the default queue is used. The default queue has a weight of 1 but can be replaced by setting a configuration with the name default. Transactions with unknown queues are processed using the default weight.

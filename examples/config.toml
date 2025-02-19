@@ -22,3 +22,10 @@ uri = "https://mainnet.utxorpc-v0.demeter.run"
 # metadata is optional
 [u5c.metadata]
 "dmtr-api-key" = "your key"
+
+[priority]
+quote = 5
+[[priority.queues]]
+name = "banana"
+weight = 2
+
