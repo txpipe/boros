@@ -51,7 +51,6 @@ struct Config {
     storage: storage::Config,
     peer_manager: pipeline::fanout::PeerManagerConfig,
     monitor: pipeline::monitor::Config,
-    //priority: priority::Config,
     #[serde(default)]
     queues: HashSet<priority::QueueConfig>,
     u5c: ledger::u5c::Config,
