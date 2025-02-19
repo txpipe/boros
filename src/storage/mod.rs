@@ -3,6 +3,8 @@ use std::{fmt::Display, str::FromStr};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
+use crate::priority::DEFAULT_QUEUE;
+
 pub mod sqlite;
 
 #[derive(Deserialize, Clone)]
@@ -10,12 +12,12 @@ pub struct Config {
     pub db_path: String,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Transaction {
     pub id: String,
     pub raw: Vec<u8>,
     pub status: TransactionStatus,
-    pub priority: TransactionPriority,
+    pub queue: String,
     pub slot: Option<u64>,
     pub dependencies: Option<Vec<String>>,
     pub created_at: DateTime<Utc>,
@@ -26,8 +28,9 @@ impl Transaction {
         Self {
             id,
             raw,
-            status: TransactionStatus::Pending,
-            priority: TransactionPriority::Low,
+            //status: TransactionStatus::Pending,
+            status: TransactionStatus::Validated,
+            queue: DEFAULT_QUEUE.into(),
             slot: None,
             dependencies: None,
             created_at: Utc::now(),
@@ -36,37 +39,7 @@ impl Transaction {
     }
 }
 
-#[derive(Clone)]
-pub enum TransactionPriority {
-    Low,
-    Medium,
-    High,
-}
-impl TryFrom<u32> for TransactionPriority {
-    type Error = anyhow::Error;
-
-    fn try_from(value: u32) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(Self::High),
-            2 => Ok(Self::Medium),
-            3 => Ok(Self::Low),
-            _ => Err(anyhow::Error::msg("transaction priority not supported")),
-        }
-    }
-}
-impl TryFrom<TransactionPriority> for u32 {
-    type Error = anyhow::Error;
-
-    fn try_from(value: TransactionPriority) -> Result<Self, Self::Error> {
-        match value {
-            TransactionPriority::High => Ok(1),
-            TransactionPriority::Medium => Ok(2),
-            TransactionPriority::Low => Ok(3),
-        }
-    }
-}
-
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum TransactionStatus {
     Pending,
     Validated,
@@ -98,6 +71,12 @@ impl Display for TransactionStatus {
 }
 
 #[derive(Clone)]
+pub struct TransactionState {
+    pub queue: String,
+    pub count: u32,
+}
+
+#[derive(Clone)]
 pub struct Cursor {
     pub slot: u64,
     pub hash: Vec<u8>,
@@ -118,7 +97,7 @@ mod tests {
                 id: "hex".into(),
                 raw: "hex".into(),
                 status: TransactionStatus::Pending,
-                priority: TransactionPriority::Low,
+                queue: DEFAULT_QUEUE.into(),
                 slot: None,
                 dependencies: None,
                 created_at: Utc::now(),

@@ -1,7 +1,8 @@
-use std::{env, error::Error, path, sync::Arc};
+use std::{collections::HashSet, env, error::Error, path, sync::Arc};
 
 use anyhow::Result;
 use dotenv::dotenv;
+use priority::DEFAULT_QUEUE;
 use serde::Deserialize;
 use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
@@ -10,6 +11,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 mod ledger;
 mod pipeline;
+mod priority;
 mod server;
 mod storage;
 
@@ -49,12 +51,14 @@ struct Config {
     storage: storage::Config,
     peer_manager: pipeline::fanout::PeerManagerConfig,
     monitor: pipeline::monitor::Config,
+    #[serde(default)]
+    queues: HashSet<priority::QueueConfig>,
     u5c: ledger::u5c::Config,
 }
 
 impl Config {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        let config = config::Config::builder()
+        let mut config: Config = config::Config::builder()
             .add_source(
                 config::File::with_name(&env::var("BOROS_CONFIG").unwrap_or("boros.toml".into()))
                     .required(false),
@@ -63,6 +67,9 @@ impl Config {
             .add_source(config::Environment::with_prefix("boros").separator("_"))
             .build()?
             .try_deserialize()?;
+
+        (!config.queues.iter().any(|q| q.name == DEFAULT_QUEUE))
+            .then(|| config.queues.insert(Default::default()));
 
         Ok(config)
     }

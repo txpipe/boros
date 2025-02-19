@@ -23,6 +23,6 @@ We chose **Queue** because it allows the user to define a configurable queue, an
 
 **Rationale**
   - Supports configurable queues.
-  - Quote of transactions.
+  - Quota of transactions.
   - Handles when a transaction can be moved to the fanout stage.
 
