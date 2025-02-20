@@ -10,7 +10,7 @@ With the Priority module, Boros allows users to configure queues to prioritise t
 Follow the [configuration](../configuration) to configure the priority queues.
 
 ### Example
-The quota is 10, so the fanout stage has a backpressure of 10, meaning only 10 transactions can be waiting for propagation. The quota is released when transactions are sent, allowing new transactions to wait. Furthermore, two queues are configured: Queue A with a weight of 3 and Queue B with a weight of 2. Queue A has higher priority than Queue B, so Queue A receives 6 slots and Queue B receives 4 slots from the quota.
+Two queues are configured: Queue A with a weight of 3 and Queue B with a weight of 2. Since Queue A has a higher weight, it receives more slots than Queue B. Specifically, the total available slots are distributed proportionally based on weight, giving Queue A 60% of the slots and Queue B 40%. This ensures that Queue A has higher priority when distributing transactions.
 
 ### Default
 Priority configurations are not required. If not configured, the default queue is used. The default queue has a weight of 1 but can be replaced by setting a configuration with the name default. Transactions with unknown queues are processed using the default weight.
