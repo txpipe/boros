@@ -31,7 +31,7 @@ pub async fn run(
 
     let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues));
 
-    let ingest = ingest::Stage::new(tx_storage.clone(), priority.clone());
+    let ingest = ingest::Stage::new(tx_storage.clone(), priority.clone(),u5c_data_adapter.clone());
     let fanout = fanout::Stage::new(
         config.peer_manager,
         relay_adapter.clone(),
