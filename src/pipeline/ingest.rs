@@ -11,6 +11,8 @@ use crate::{
 
 use super::CAP;
 
+use super::CAP;
+
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Vec<Transaction>", worker = "Worker")]
 pub struct Stage {
