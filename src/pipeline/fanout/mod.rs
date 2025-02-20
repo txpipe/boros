@@ -15,6 +15,8 @@ use crate::{
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
 
+use super::CAP;
+
 pub mod mempool;
 pub mod peer;
 pub mod peer_manager;
@@ -98,9 +100,10 @@ impl gasket::framework::Worker<Stage> for Worker {
         let additional_peers_required =
             desired_count as usize - self.peer_manager.connected_peers_count().await;
 
+        // TODO: calculate the current cap, (CAP - busy slots) = available cap
         let transactions = stage
             .priority
-            .next(TransactionStatus::Validated)
+            .next(TransactionStatus::Validated, CAP)
             .await
             .or_retry()?;
 
