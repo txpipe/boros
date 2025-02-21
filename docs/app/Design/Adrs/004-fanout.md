@@ -1,6 +1,5 @@
 ---
 title: Fanout
-sidebarTitle: Fanout
 ---
 
 # Boros - Fanout Mechanism

@@ -1,6 +1,5 @@
 ---
 title: Storage
-sidebarTitle: Storage
 ---
 
 # Decision to choose a storage

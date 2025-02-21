@@ -1,6 +1,5 @@
 ---
 title: Entry point
-sidebarTitle: Entry point
 ---
 
 # Decision to choose an entry point server

@@ -1,6 +1,5 @@
 ---
 title: Priority
-sidebarTitle: Priority
 ---
 
 # Decision to choose a priority strategy

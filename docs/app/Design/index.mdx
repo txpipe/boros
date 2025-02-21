@@ -1,10 +1,8 @@
 ---
-title: Design
-sidebarTitle: Design
-asIndexPage: true
+title: Architectural design
+sidebar:
+    order: 5
 ---
-
-## Architectural design
 
 Boros runs two threads, where one is the pipeline to process the states of transactions, and the other one is the GRPC server to receive requests. The GRPC makes a basic validation only to check if the transactions are valid and save them as pending in the DB. Each stage in the pipeline consumes the transactions in the DB based on the status of the transaction, so if the Boros process shuts down, it can be started again without losing the state. Furthermore, the pipeline has a policy of attempts, so if there's an error, the stage is retried based on the policy.
 
