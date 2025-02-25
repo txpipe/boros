@@ -1,11 +1,10 @@
-use std::{collections::HashMap, pin::Pin, str::FromStr};
+use std::{collections::HashMap, pin::Pin, str::FromStr, vec};
 
 use anyhow::bail;
 use async_stream::stream;
 use futures::{Stream, TryStreamExt};
 use pallas::{
-    crypto::hash::Hash,
-    interop::utxorpc::spec::{
+    codec::utils::KeyValuePairs, crypto::hash::Hash, interop::utxorpc::spec::{
         cardano::{
             CostModel, Tx,
         },
@@ -18,17 +17,15 @@ use pallas::{
             any_chain_block, follow_tip_response, sync_service_client::SyncServiceClient, BlockRef,
             FollowTipRequest, ReadTipRequest,
         },
-    },
-    ledger::{
+    }, ledger::{
         primitives::{
             self, conway::{DRepVotingThresholds, PoolVotingThresholds}, ExUnitPrices
         },
         traverse::{update::ConwayCostModels, Era},
-    },
-    validate::utils::{
+    }, validate::utils::{
         ConwayProtParams, EraCbor,
         MultiEraProtocolParameters,
-    },
+    }
 };
 use serde::Deserialize;
 use tonic::{
@@ -324,6 +321,7 @@ fn map_conway_pparams(pparams: &Params) -> ConwayProtParams {
                             .unwrap_or(CostModel { values: vec![] })
                             .values,
                     ),
+                    unknown: KeyValuePairs::from(vec![]),
                 },
                 execution_costs: ExUnitPrices {
                     mem_price: primitives::RationalNumber {
