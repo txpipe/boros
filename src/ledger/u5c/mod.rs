@@ -2,15 +2,12 @@ use std::{collections::HashMap, pin::Pin, str::FromStr};
 
 use anyhow::bail;
 use async_stream::stream;
-use chrono::{offset, DateTime, FixedOffset, NaiveDateTime};
 use futures::{Stream, TryStreamExt};
 use pallas::{
-    codec::utils::KeyValuePairs,
     crypto::hash::Hash,
     interop::utxorpc::spec::{
         cardano::{
-            CostModel, CostModels, ExPrices, ExUnits, ProtocolVersion, RationalNumber, Tx,
-            VotingThresholds,
+            CostModel, Tx,
         },
         query::{
             any_chain_params::{self, Params},
@@ -24,16 +21,13 @@ use pallas::{
     },
     ledger::{
         primitives::{
-            self,
-            alonzo::Language,
-            conway::{DRepVotingThresholds, PoolVotingThresholds},
-            ExUnitPrices, Nonce, NonceVariant,
+            self, conway::{DRepVotingThresholds, PoolVotingThresholds}, ExUnitPrices
         },
         traverse::{update::ConwayCostModels, Era},
     },
     validate::utils::{
-        AlonzoProtParams, BabbageProtParams, ByronProtParams, ConwayProtParams, EraCbor,
-        MultiEraProtocolParameters, ShelleyProtParams,
+        ConwayProtParams, EraCbor,
+        MultiEraProtocolParameters,
     },
 };
 use serde::Deserialize;
@@ -192,7 +186,7 @@ impl U5cDataAdapter for U5cDataAdapterImpl {
         let pparams = response.values.unwrap_or_default();
         let pparams = pparams.params.unwrap();
 
-        let multi_era_pparams = get_multi_era_pparams(&pparams, era)?;
+        let multi_era_pparams = map_multi_era_pparams(&pparams, era)?;
 
         Ok(multi_era_pparams)
     }
@@ -264,528 +258,39 @@ impl U5cDataAdapter for U5cDataAdapterImpl {
     }
 }
 
-fn get_multi_era_pparams(
+fn map_multi_era_pparams(
     pparams: &Params,
     era: Era,
 ) -> Result<MultiEraProtocolParameters, anyhow::Error> {
     let multi_era_pparams = match era {
-        Era::Byron => {
-            let byron_pparams = get_byron_pparams(pparams);
-            MultiEraProtocolParameters::Byron(byron_pparams)
-        }
-        Era::Shelley => {
-            let shelley_pparams = get_shelley_params(pparams);
-            MultiEraProtocolParameters::Shelley(shelley_pparams)
-        }
-        Era::Alonzo => {
-            let alonzo_pparams = get_alonzo_pparams(pparams);
-            MultiEraProtocolParameters::Alonzo(alonzo_pparams)
-        }
-        Era::Babbage => {
-            let babbage_pparams = get_babbage_pparams(pparams);
-            MultiEraProtocolParameters::Babbage(babbage_pparams)
-        }
         Era::Conway => {
-            let conway_pparams = get_conway_pparams(pparams);
+            let conway_pparams = map_conway_pparams(pparams);
             MultiEraProtocolParameters::Conway(conway_pparams)
         }
-        _ => bail!("U5c era not implemented"),
+        _ => unimplemented!("Era not supported yet"),
     };
 
     Ok(multi_era_pparams)
 }
 
-fn get_byron_pparams(pparams: &Params) -> ByronProtParams {
-    match pparams {
-        any_chain_params::Params::Cardano(params) => ByronProtParams {
-            block_version: (0, 0, 0),
-            start_time: 0,
-            script_version: 0,
-            slot_duration: 1,
-            max_block_size: params.max_block_body_size + params.max_block_header_size,
-            max_header_size: params.max_block_header_size,
-            max_tx_size: params.max_tx_size,
-            max_proposal_size: 0,
-            mpc_thd: 0,
-            heavy_del_thd: 0,
-            update_vote_thd: 0,
-            update_proposal_thd: 0,
-            update_implicit: 0,
-            soft_fork_rule: (0, 0, 0),
-            summand: 0,
-            multiplier: 0,
-            unlock_stake_epoch: 0,
-        },
-    }
-}
-
-fn get_shelley_params(pparams: &Params) -> ShelleyProtParams {
+fn map_conway_pparams(pparams: &Params) -> ConwayProtParams {
     match pparams.clone() {
         any_chain_params::Params::Cardano(params) => {
-            let monetary_expansion = params.monetary_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-
-            let treasury_expansion = params.treasury_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-
-            let pool_influence = params.pool_influence.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-
-            let protocol_version = params
-                .protocol_version
-                .unwrap_or_else(|| ProtocolVersion { major: 1, minor: 1 });
-
-            ShelleyProtParams {
-                system_start: DateTime::<FixedOffset>::from_naive_utc_and_offset(
-                    NaiveDateTime::default(),
-                    offset::FixedOffset::east_opt(0)
-                        .unwrap_or_else(|| offset::FixedOffset::east_opt(0).unwrap()),
-                ),
-                epoch_length: 0,
-                slot_length: 0,
-                minfee_a: params.min_fee_coefficient as u32,
-                minfee_b: params.min_fee_constant as u32,
-                max_block_body_size: params.max_block_body_size as u32,
-                max_transaction_size: params.max_tx_size as u32,
-                max_block_header_size: params.max_block_header_size as u32,
-                key_deposit: params.stake_key_deposit,
-                pool_deposit: params.pool_deposit,
-                desired_number_of_stake_pools: params.desired_number_of_pools as u32,
-                protocol_version: {
-                    let proto = protocol_version;
-                    (proto.major as u64, proto.minor as u64)
-                },
-                min_utxo_value: 0,
-                min_pool_cost: params.min_pool_cost,
-                expansion_rate: primitives::RationalNumber {
-                    numerator: monetary_expansion.numerator as u64,
-                    denominator: monetary_expansion.denominator as u64,
-                },
-                treasury_growth_rate: primitives::RationalNumber {
-                    numerator: treasury_expansion.numerator as u64,
-                    denominator: treasury_expansion.denominator as u64,
-                },
-                maximum_epoch: 0,
-                pool_pledge_influence: primitives::RationalNumber {
-                    numerator: pool_influence.numerator as u64,
-                    denominator: pool_influence.denominator as u64,
-                },
-                decentralization_constant: primitives::RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                },
-                extra_entropy: Nonce {
-                    variant: NonceVariant::Nonce,
-                    hash: None,
-                },
-            }
-        }
-    }
-}
-
-fn get_alonzo_pparams(pparams: &Params) -> AlonzoProtParams {
-    match pparams.clone() {
-        any_chain_params::Params::Cardano(params) => {
-            let monetary_expansion = params.monetary_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let treasury_expansion = params.treasury_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let pool_influence = params.pool_influence.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let execution_costs = params.prices.unwrap_or_else(|| ExPrices {
-                memory: Some(RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                }),
-                steps: Some(RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                }),
-            });
-            AlonzoProtParams {
-                system_start: DateTime::<FixedOffset>::from_naive_utc_and_offset(
-                    NaiveDateTime::default(),
-                    offset::FixedOffset::east_opt(0)
-                        .unwrap_or_else(|| offset::FixedOffset::east_opt(0).unwrap()),
-                ),
-                epoch_length: 0,
-                slot_length: 0,
-                minfee_a: params.min_fee_coefficient as u32,
-                minfee_b: params.min_fee_constant as u32,
-                max_block_body_size: params.max_block_body_size as u32,
-                max_transaction_size: params.max_tx_size as u32,
-                max_block_header_size: params.max_block_header_size as u32,
-                key_deposit: params.stake_key_deposit,
-                pool_deposit: params.pool_deposit,
-                desired_number_of_stake_pools: params.desired_number_of_pools as u32,
-                protocol_version: {
-                    let proto = params
-                        .protocol_version
-                        .unwrap_or_else(|| ProtocolVersion { major: 1, minor: 1 });
-                    (proto.major as u64, proto.minor as u64)
-                },
-                min_pool_cost: params.min_pool_cost,
-                ada_per_utxo_byte: params.coins_per_utxo_byte,
-                cost_models_for_script_languages: KeyValuePairs::Indef(vec![(
-                    Language::PlutusV1,
-                    match params.cost_models {
-                        Some(cost_models) => {
-                            match cost_models.plutus_v1 {
-                                Some(plutus_v1) => plutus_v1.values,
-                                None => {
-                                    vec![]
-                                }
-                            }
-                        }
-                        None => {
-                            vec![]
-                        }
-                    },
-                )]),
-                execution_costs: ExUnitPrices {
-                    mem_price: primitives::RationalNumber {
-                        numerator: execution_costs
-                            .memory
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 5,
-                            })
-                            .numerator as u64,
-                        denominator: execution_costs
-                            .memory
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .denominator as u64,
-                    },
-                    step_price: primitives::RationalNumber {
-                        numerator: execution_costs
-                            .steps
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .numerator as u64,
-                        denominator: execution_costs
-                            .steps
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .denominator as u64,
-                    },
-                },
-                max_tx_ex_units: primitives::ExUnits {
-                    mem: params
-                        .max_execution_units_per_transaction
-                        .clone()
-                        .unwrap_or(ExUnits {
-                            memory: 1,
-                            steps: 1,
-                        })
-                        .memory as u64,
-                    steps: params
-                        .max_execution_units_per_transaction
-                        .clone()
-                        .unwrap_or(ExUnits {
-                            memory: 1,
-                            steps: 1,
-                        })
-                        .steps as u64,
-                },
-                max_block_ex_units: primitives::ExUnits {
-                    mem: params
-                        .max_execution_units_per_block
-                        .clone()
-                        .unwrap_or(ExUnits {
-                            memory: 1,
-                            steps: 1,
-                        })
-                        .memory as u64,
-                    steps: params
-                        .max_execution_units_per_block
-                        .clone()
-                        .unwrap_or(ExUnits {
-                            memory: 1,
-                            steps: 1,
-                        })
-                        .steps as u64,
-                },
-                max_value_size: params.max_value_size as u32,
-                collateral_percentage: params.collateral_percentage as u32,
-                max_collateral_inputs: params.max_collateral_inputs as u32,
-                expansion_rate: primitives::RationalNumber {
-                    numerator: monetary_expansion.numerator as u64,
-                    denominator: monetary_expansion.denominator as u64,
-                },
-                treasury_growth_rate: primitives::RationalNumber {
-                    numerator: treasury_expansion.numerator as u64,
-                    denominator: treasury_expansion.denominator as u64,
-                },
-                maximum_epoch: 0,
-                pool_pledge_influence: primitives::RationalNumber {
-                    numerator: pool_influence.numerator as u64,
-                    denominator: pool_influence.denominator as u64,
-                },
-                decentralization_constant: primitives::RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                },
-                extra_entropy: Nonce {
-                    variant: NonceVariant::Nonce,
-                    hash: None,
-                },
-            }
-        }
-    }
-}
-
-fn get_babbage_pparams(pparams: &Params) -> BabbageProtParams {
-    match pparams.clone() {
-        any_chain_params::Params::Cardano(params) => {
-            let monetary_expansion = params.monetary_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let treasury_expansion = params.treasury_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let pool_influence = params.pool_influence.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let execution_costs = params.prices.unwrap_or_else(|| ExPrices {
-                memory: Some(RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                }),
-                steps: Some(RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                }),
-            });
-            let cost_models = params.cost_models.unwrap_or_else(|| CostModels {
-                plutus_v1: Some(CostModel { values: vec![] }),
-                plutus_v2: Some(CostModel { values: vec![] }),
-                plutus_v3: Some(CostModel { values: vec![] }),
-            });
-            let max_execution_units_per_transaction = params
-                .max_execution_units_per_transaction
-                .unwrap_or(ExUnits {
-                    memory: 1,
-                    steps: 1,
-                });
-            let max_execution_units_per_block =
-                params.max_execution_units_per_block.unwrap_or(ExUnits {
-                    memory: 1,
-                    steps: 1,
-                });
-            BabbageProtParams {
-                system_start: DateTime::<FixedOffset>::from_naive_utc_and_offset(
-                    NaiveDateTime::default(),
-                    offset::FixedOffset::east_opt(0)
-                        .unwrap_or_else(|| offset::FixedOffset::east_opt(0).unwrap()),
-                ),
-                epoch_length: 0,
-                slot_length: 0,
-                minfee_a: params.min_fee_coefficient as u32,
-                minfee_b: params.min_fee_constant as u32,
-                max_block_body_size: params.max_block_body_size as u32,
-                max_transaction_size: params.max_tx_size as u32,
-                max_block_header_size: params.max_block_header_size as u32,
-                key_deposit: params.stake_key_deposit,
-                pool_deposit: params.pool_deposit,
-                desired_number_of_stake_pools: params.desired_number_of_pools as u32,
-                protocol_version: {
-                    let proto = params
-                        .protocol_version
-                        .as_ref()
-                        .unwrap_or(&ProtocolVersion { major: 1, minor: 1 });
-                    (proto.major as u64, proto.minor as u64)
-                },
-                min_pool_cost: params.min_pool_cost,
-                ada_per_utxo_byte: params.coins_per_utxo_byte,
-                cost_models_for_script_languages: primitives::babbage::CostModels {
-                    plutus_v1: Some(
-                        cost_models
-                            .plutus_v1
-                            .unwrap_or(CostModel { values: vec![] })
-                            .values,
-                    ),
-                    plutus_v2: Some(
-                        cost_models
-                            .plutus_v2
-                            .unwrap_or(CostModel { values: vec![] })
-                            .values,
-                    ),
-                },
-                execution_costs: ExUnitPrices {
-                    mem_price: primitives::RationalNumber {
-                        numerator: execution_costs
-                            .memory
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .numerator as u64,
-                        denominator: execution_costs
-                            .memory
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .denominator as u64,
-                    },
-                    step_price: primitives::RationalNumber {
-                        numerator: execution_costs
-                            .steps
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .numerator as u64,
-                        denominator: execution_costs
-                            .steps
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .denominator as u64,
-                    },
-                },
-                max_tx_ex_units: primitives::ExUnits {
-                    mem: max_execution_units_per_transaction.memory as u64,
-                    steps: max_execution_units_per_transaction.steps as u64,
-                },
-                max_block_ex_units: primitives::ExUnits {
-                    mem: max_execution_units_per_block.memory as u64,
-                    steps: max_execution_units_per_block.steps as u64,
-                },
-                max_value_size: params.max_value_size as u32,
-                collateral_percentage: params.collateral_percentage as u32,
-                max_collateral_inputs: params.max_collateral_inputs as u32,
-                expansion_rate: primitives::RationalNumber {
-                    numerator: monetary_expansion.numerator as u64,
-                    denominator: monetary_expansion.denominator as u64,
-                },
-                treasury_growth_rate: primitives::RationalNumber {
-                    numerator: treasury_expansion.numerator as u64,
-                    denominator: treasury_expansion.denominator as u64,
-                },
-                maximum_epoch: 0,
-                pool_pledge_influence: primitives::RationalNumber {
-                    numerator: pool_influence.numerator as u64,
-                    denominator: pool_influence.denominator as u64,
-                },
-                decentralization_constant: primitives::RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                },
-                extra_entropy: Nonce {
-                    variant: NonceVariant::Nonce,
-                    hash: None,
-                },
-            }
-        }
-    }
-}
-
-fn get_conway_pparams(pparams: &Params) -> ConwayProtParams {
-    match pparams.clone() {
-        any_chain_params::Params::Cardano(params) => {
-            let pool_influence = params.pool_influence.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let monetary_expansion = params.monetary_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let treasury_expansion = params.treasury_expansion.unwrap_or_else(|| RationalNumber {
-                numerator: 1,
-                denominator: 1,
-            });
-            let execution_costs = params.prices.unwrap_or_else(|| ExPrices {
-                memory: Some(RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                }),
-                steps: Some(RationalNumber {
-                    numerator: 1,
-                    denominator: 1,
-                }),
-            });
-            let cost_models = params.cost_models.unwrap_or_else(|| CostModels {
-                plutus_v1: Some(CostModel { values: vec![] }),
-                plutus_v2: Some(CostModel { values: vec![] }),
-                plutus_v3: Some(CostModel { values: vec![] }),
-            });
-            let max_execution_units_per_transaction = params
-                .max_execution_units_per_transaction
-                .unwrap_or(ExUnits::default());
-            let max_execution_units_per_block = params
-                .max_execution_units_per_block
-                .unwrap_or(ExUnits::default());
-            let pool_voting_thresholds =
-                params
-                    .pool_voting_thresholds
-                    .unwrap_or_else(|| VotingThresholds {
-                        thresholds: vec![
-                            RationalNumber {
-                                numerator: 1,
-                                denominator: 1
-                            };
-                            5
-                        ],
-                    });
-            let drep_voting_thresholds =
-                params
-                    .drep_voting_thresholds
-                    .unwrap_or_else(|| VotingThresholds {
-                        thresholds: vec![
-                            RationalNumber {
-                                numerator: 1,
-                                denominator: 1
-                            };
-                            10
-                        ],
-                    });
-            let min_fee_script_ref_cost_per_byte = params
-                .min_fee_script_ref_cost_per_byte
-                .unwrap_or(RationalNumber {
-                    numerator: 1,
-                    denominator: 5,
-                });
-
+            let pool_influence = params.pool_influence.unwrap();
+            let monetary_expansion = params.monetary_expansion.unwrap();
+            let treasury_expansion = params.treasury_expansion.unwrap();
+            let execution_costs = params.prices.unwrap();
+            let cost_models = params.cost_models.unwrap();
+            let max_execution_units_per_transaction =
+                params.max_execution_units_per_transaction.unwrap();
+            let max_execution_units_per_block = params.max_execution_units_per_block.unwrap();
+            let pool_voting_thresholds = params.pool_voting_thresholds.unwrap();
+            let drep_voting_thresholds = params.drep_voting_thresholds.unwrap();
+            let min_fee_script_ref_cost_per_byte = params.min_fee_script_ref_cost_per_byte.unwrap();
             ConwayProtParams {
-                system_start: DateTime::<FixedOffset>::from_naive_utc_and_offset(
-                    NaiveDateTime::default(),
-                    offset::FixedOffset::east_opt(0).unwrap(),
-                ),
-                epoch_length: 0,
-                slot_length: 0,
+                system_start: chrono::DateTime::parse_from_rfc3339("2022-10-25T00:00:00Z").unwrap(),
+                epoch_length: 86400,
+                slot_length: 1,
                 minfee_a: params.min_fee_coefficient as u32,
                 minfee_b: params.min_fee_constant as u32,
                 max_block_body_size: params.max_block_body_size as u32,
@@ -795,10 +300,7 @@ fn get_conway_pparams(pparams: &Params) -> ConwayProtParams {
                 pool_deposit: params.pool_deposit,
                 desired_number_of_stake_pools: params.desired_number_of_pools as u32,
                 protocol_version: {
-                    let proto = params
-                        .protocol_version
-                        .as_ref()
-                        .unwrap_or(&ProtocolVersion { major: 1, minor: 1 });
+                    let proto = params.protocol_version.unwrap();
                     (proto.major as u64, proto.minor as u64)
                 },
                 min_pool_cost: params.min_pool_cost,
@@ -825,40 +327,12 @@ fn get_conway_pparams(pparams: &Params) -> ConwayProtParams {
                 },
                 execution_costs: ExUnitPrices {
                     mem_price: primitives::RationalNumber {
-                        numerator: execution_costs
-                            .memory
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .numerator as u64,
-                        denominator: execution_costs
-                            .memory
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .denominator as u64,
+                        numerator: execution_costs.memory.clone().unwrap().numerator as u64,
+                        denominator: execution_costs.memory.clone().unwrap().denominator as u64,
                     },
                     step_price: primitives::RationalNumber {
-                        numerator: execution_costs
-                            .steps
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .numerator as u64,
-                        denominator: execution_costs
-                            .steps
-                            .clone()
-                            .unwrap_or(RationalNumber {
-                                numerator: 1,
-                                denominator: 1,
-                            })
-                            .denominator as u64,
+                        numerator: execution_costs.steps.clone().unwrap().numerator as u64,
+                        denominator: execution_costs.steps.clone().unwrap().denominator as u64,
                     },
                 },
                 max_tx_ex_units: primitives::ExUnits {
@@ -880,7 +354,7 @@ fn get_conway_pparams(pparams: &Params) -> ConwayProtParams {
                     numerator: treasury_expansion.numerator as u64,
                     denominator: treasury_expansion.denominator as u64,
                 },
-                maximum_epoch: 0,
+                maximum_epoch: 18,
                 pool_pledge_influence: primitives::RationalNumber {
                     numerator: pool_influence.numerator as u64,
                     denominator: pool_influence.denominator as u64,
