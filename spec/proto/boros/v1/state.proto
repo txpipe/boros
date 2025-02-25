@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package boros.v1;
+
+message FetchStateRequest {}
+message FetchStateResponse {}
+
+service StateService {
+  rpc FetchState(FetchStateRequest) returns (FetchStateResponse);
+}
+
