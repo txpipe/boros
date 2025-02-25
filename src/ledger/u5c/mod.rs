@@ -192,26 +192,7 @@ impl U5cDataAdapter for U5cDataAdapterImpl {
         let pparams = response.values.unwrap_or_default();
         let pparams = pparams.params.unwrap();
 
-        let byron_pparams = get_byron_pparams(&pparams);
-        let shelley_pparams = get_shelley_params(&pparams);
-        let alonzo_pparams = get_alonzo_pparams(&pparams);
-        let babbage_pparams = get_babbage_pparams(&pparams);
-        let conway_pparams = get_conway_pparams(&pparams);
-
-        let byron_pparams = MultiEraProtocolParameters::Byron(byron_pparams);
-        let shelley_pparams = MultiEraProtocolParameters::Shelley(shelley_pparams);
-        let alonzo_pparams = MultiEraProtocolParameters::Alonzo(alonzo_pparams);
-        let babbage_pparams = MultiEraProtocolParameters::Babbage(babbage_pparams);
-        let conway_pparams = MultiEraProtocolParameters::Conway(conway_pparams);
-
-        let multi_era_pparams = match era {
-            Era::Byron => byron_pparams,
-            Era::Shelley => shelley_pparams,
-            Era::Alonzo => alonzo_pparams,
-            Era::Babbage => babbage_pparams,
-            Era::Conway => conway_pparams,
-            _ => bail!("U5c era not implemented"),
-        };
+        let multi_era_pparams = get_multi_era_pparams(&pparams, era)?;
 
         Ok(multi_era_pparams)
     }
@@ -281,6 +262,37 @@ impl U5cDataAdapter for U5cDataAdapterImpl {
 
         Ok(Box::pin(stream))
     }
+}
+
+fn get_multi_era_pparams(
+    pparams: &Params,
+    era: Era,
+) -> Result<MultiEraProtocolParameters, anyhow::Error> {
+    let multi_era_pparams = match era {
+        Era::Byron => {
+            let byron_pparams = get_byron_pparams(pparams);
+            MultiEraProtocolParameters::Byron(byron_pparams)
+        }
+        Era::Shelley => {
+            let shelley_pparams = get_shelley_params(pparams);
+            MultiEraProtocolParameters::Shelley(shelley_pparams)
+        }
+        Era::Alonzo => {
+            let alonzo_pparams = get_alonzo_pparams(pparams);
+            MultiEraProtocolParameters::Alonzo(alonzo_pparams)
+        }
+        Era::Babbage => {
+            let babbage_pparams = get_babbage_pparams(pparams);
+            MultiEraProtocolParameters::Babbage(babbage_pparams)
+        }
+        Era::Conway => {
+            let conway_pparams = get_conway_pparams(pparams);
+            MultiEraProtocolParameters::Conway(conway_pparams)
+        }
+        _ => bail!("U5c era not implemented"),
+    };
+
+    Ok(multi_era_pparams)
 }
 
 fn get_byron_pparams(pparams: &Params) -> ByronProtParams {
@@ -433,12 +445,12 @@ fn get_alonzo_pparams(pparams: &Params) -> AlonzoProtParams {
                             match cost_models.plutus_v1 {
                                 Some(plutus_v1) => plutus_v1.values,
                                 None => {
-                                    vec![] // Provide an empty vec if not found
+                                    vec![]
                                 }
                             }
                         }
                         None => {
-                            vec![] // Default empty cost models if not found
+                            vec![]
                         }
                     },
                 )]),
@@ -950,74 +962,4 @@ fn get_conway_pparams(pparams: &Params) -> ConwayProtParams {
             }
         }
     }
-}
-
-#[cfg(test)]
-mod u5c_tests {
-    // use super::*;
-    // use std::collections::HashMap;
-
-    // pub struct MockU5cDataAdapter {
-    //     pub known_utxos: HashMap<String, Vec<u8>>,
-    // }
-
-    // #[async_trait::async_trait]
-    // impl U5cDataAdapter for MockU5cDataAdapter {
-    //     async fn fetch_tip(&self) -> anyhow::Result<Point> {
-    //         todo!()
-    //     }
-
-    //     // async fn fetch_utxos(
-    //     //     &self,
-    //     //     utxo_refs: Vec<TxoRef>,
-    //     // ) -> anyhow::Result<HashMap<String, Vec<u8>>> {
-    //     //     let mut result = HashMap::new();
-
-    //     //     // Check each requested reference; if known, clone the data into the result
-    //     //     for reference in utxo_refs {
-    //     //         if let Some(cbor_data) = self.known_utxos.get(reference) {
-    //     //             result.insert(reference.clone(), cbor_data.clone());
-    //     //         }
-    //     //     }
-
-    //     //     Ok(result)
-    //     // }
-
-    //     // async fn fetch_pparams(
-    //     //     &self,
-    //     //     era: Era,
-    //     // ) -> Result<MultiEraProtocolParameters, anyhow::Error> {
-    //     //     todo!()
-    //     // }
-
-    //     // async fn stream(&self) -> anyhow::Result<ChainSyncStream> {
-    //     //     todo!()
-    //     // }
-    // }
-
-    // #[tokio::test]
-    // async fn it_returns_found_utxos_only() {
-    //     // Arrange: a mock with two known references
-    //     let mut known = HashMap::new();
-    //     known.insert("abc123#0".to_string(), vec![0x82, 0xa0]); // example CBOR
-    //     known.insert("abc123#1".to_string(), vec![0x83, 0x04]);
-
-    //     // let provider = MockU5cDataAdapter { known_utxos: known };
-
-    //     // // We'll request three references, one of which doesn't exist
-    //     // let requested = vec![
-    //     //     "abc123#0".to_string(),
-    //     //     "abc123#1".to_string(),
-    //     //     "missing#2".to_string(),
-    //     // ];
-
-    //     // Act
-    //     // let results = provider.fetch_utxos(&requested).await.unwrap();
-
-    //     // Assert
-    //     // assert_eq!(results.len(), 2, "Should only contain two known references");
-    //     // assert!(results.contains_key("abc123#0"));
-    //     // assert!(results.contains_key("abc123#1"));
-    //     // assert!(!results.contains_key("missing#2"));
-    // }
 }

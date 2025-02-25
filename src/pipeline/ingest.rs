@@ -162,7 +162,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
         for tx in unit.iter() {
             let mut tx = tx.clone();
-            let metx = MultiEraTx::decode(AsRef::as_ref(&tx.raw)).ok().unwrap();
+            let metx = MultiEraTx::decode(AsRef::as_ref(&tx.raw)).map_err(|_| WorkerError::Recv)?;
 
             stage.validate_tx(&metx).await.or_retry()?;
             stage.evaluate_tx(&metx).await.or_retry()?;
@@ -191,8 +191,7 @@ mod ingest_tests {
     };
     use crate::Config;
 
-
-    /// Test file = conway9.tx
+    /// Test file = conway12.tx
     /// This test is expected to pass because the transaction is valid.
     #[tokio::test]
     async fn it_should_validate_tx() {
@@ -210,7 +209,7 @@ mod ingest_tests {
 
         let stage = ingest::Stage::new(storage.clone(), priority, u5c_data_adapter);
 
-        let tx_cbor = include_str!("../../test/conway9.tx");
+        let tx_cbor = include_str!("../../test/conway6.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
         tx.status = TransactionStatus::Pending;
 
@@ -226,7 +225,7 @@ mod ingest_tests {
         );
     }
 
-    /// Test file = conway9.tx
+    /// Test file = conway12.tx
     /// This test is expected to pass because the transaction is valid.
     #[tokio::test]
     async fn it_should_evaluate_tx() {
@@ -244,7 +243,7 @@ mod ingest_tests {
 
         let stage = ingest::Stage::new(storage.clone(), priority, u5c_data_adapter);
 
-        let tx_cbor = include_str!("../../test/conway9.tx");
+        let tx_cbor = include_str!("../../test/conway6.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
         tx.status = TransactionStatus::Pending;
 
@@ -260,7 +259,7 @@ mod ingest_tests {
         );
     }
 
-    /// Test file = conway9.tx
+    /// Test file = conway12.tx
     /// This test is expected to pass because the transaction is valid.
     #[tokio::test]
     async fn it_should_validate_and_evaluate_tx() {
@@ -278,7 +277,7 @@ mod ingest_tests {
 
         let stage = ingest::Stage::new(storage.clone(), priority, u5c_data_adapter);
 
-        let tx_cbor = include_str!("../../test/conway9.tx");
+        let tx_cbor = include_str!("../../test/conway6.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
         tx.status = TransactionStatus::Pending;
 
@@ -306,7 +305,7 @@ mod ingest_tests {
         );
     }
 
-    /// Test file = conway8.tx
+    /// Test file = conway3.tx
     /// This test is expected to fail because the transaction is unwitnessed.
     #[tokio::test]
     async fn it_should_not_validate_tx() {
@@ -324,7 +323,7 @@ mod ingest_tests {
 
         let stage = ingest::Stage::new(storage.clone(), priority, u5c_data_adapter);
 
-        let tx_cbor = include_str!("../../test/conway7.tx");
+        let tx_cbor = include_str!("../../test/conway3.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
         tx.status = TransactionStatus::Pending;
 
@@ -359,7 +358,7 @@ mod ingest_tests {
 
         let stage = ingest::Stage::new(storage.clone(), priority, u5c_data_adapter);
 
-        let tx_cbor = include_str!("../../test/conway10.tx");
+        let tx_cbor = include_str!("../../test/conway4.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
         tx.status = TransactionStatus::Pending;
 
