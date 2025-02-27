@@ -19,6 +19,8 @@ pub mod fanout;
 pub mod ingest;
 pub mod monitor;
 
+const CAP: u16 = 50;
+
 pub async fn run(
     config: Config,
     tx_storage: Arc<SqliteTransaction>,
