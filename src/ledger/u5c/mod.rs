@@ -335,12 +335,12 @@ fn map_conway_pparams(pparams: &Params) -> ConwayProtParams {
                     },
                 },
                 max_tx_ex_units: primitives::ExUnits {
-                    mem: max_execution_units_per_transaction.memory as u64,
-                    steps: max_execution_units_per_transaction.steps as u64,
+                    mem: max_execution_units_per_transaction.memory,
+                    steps: max_execution_units_per_transaction.steps,
                 },
                 max_block_ex_units: primitives::ExUnits {
-                    mem: max_execution_units_per_block.memory as u64,
-                    steps: max_execution_units_per_block.steps as u64,
+                    mem: max_execution_units_per_block.memory,
+                    steps: max_execution_units_per_block.steps,
                 },
                 max_value_size: params.max_value_size as u32,
                 collateral_percentage: params.collateral_percentage as u32,

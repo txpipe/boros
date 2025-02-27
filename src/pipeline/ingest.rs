@@ -45,7 +45,7 @@ impl Stage {
         }
     }
 
-    async fn validate_tx<'a>(&self, tx: &MultiEraTx<'a>) -> Result<(), anyhow::Error> {
+    async fn validate_tx(&self, tx: &MultiEraTx<'_>) -> Result<(), anyhow::Error> {
         let (block_slot, block_hash_vec) = self.u5c_adapter.fetch_tip().await.or_retry()?;
         let block_hash_vec: [u8; 32] = block_hash_vec.try_into().unwrap();
         let block_hash: Hash<32> = Hash::from(block_hash_vec);
@@ -97,7 +97,7 @@ impl Stage {
         Ok(())
     }
 
-    async fn evaluate_tx<'a>(&self, tx: &MultiEraTx<'a>) -> Result<EvalReport, anyhow::Error> {
+    async fn evaluate_tx(&self, tx: &MultiEraTx<'_>) -> Result<EvalReport, anyhow::Error> {
         let era = tx.era();
 
         let pparams = self.u5c_adapter.fetch_pparams(era).await.or_retry()?;
@@ -181,7 +181,6 @@ impl gasket::framework::Worker<Stage> for Worker {
 
 #[cfg(test)]
 mod ingest_tests {
-
     use std::sync::Arc;
 
     use crate::ledger::u5c::U5cDataAdapterImpl;
