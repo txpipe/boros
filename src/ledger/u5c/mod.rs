@@ -21,11 +21,8 @@ use pallas::{
         primitives::{
             self, conway::{DRepVotingThresholds, PoolVotingThresholds}, ExUnitPrices
         },
-        traverse::{update::ConwayCostModels, Era},
-    }, validate::utils::{
-        ConwayProtParams, EraCbor,
-        MultiEraProtocolParameters,
-    }
+        traverse::{update::ConwayCostModels, Era}, validate::utils::{ConwayProtParams, EraCbor, MultiEraProtocolParameters},
+    }, 
 };
 use serde::Deserialize;
 use tonic::{
