@@ -10,7 +10,7 @@ impl serde::Serialize for LockStateRequest {
         if !self.queue.is_empty() {
             len += 1;
         }
-        let mut struct_ser = serializer.serialize_struct("boros.v1.LockStateRequest", len)?;
+        let mut struct_ser = serializer.serialize_struct("boros.v1.submit.LockStateRequest", len)?;
         if !self.queue.is_empty() {
             struct_ser.serialize_field("queue", &self.queue)?;
         }
@@ -64,7 +64,7 @@ impl<'de> serde::Deserialize<'de> for LockStateRequest {
             type Value = LockStateRequest;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct boros.v1.LockStateRequest")
+                formatter.write_str("struct boros.v1.submit.LockStateRequest")
             }
 
             fn visit_map<V>(self, mut map_: V) -> std::result::Result<LockStateRequest, V::Error>
@@ -87,7 +87,7 @@ impl<'de> serde::Deserialize<'de> for LockStateRequest {
                 })
             }
         }
-        deserializer.deserialize_struct("boros.v1.LockStateRequest", FIELDS, GeneratedVisitor)
+        deserializer.deserialize_struct("boros.v1.submit.LockStateRequest", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for LockStateResponse {
@@ -104,7 +104,7 @@ impl serde::Serialize for LockStateResponse {
         if !self.cbor.is_empty() {
             len += 1;
         }
-        let mut struct_ser = serializer.serialize_struct("boros.v1.LockStateResponse", len)?;
+        let mut struct_ser = serializer.serialize_struct("boros.v1.submit.LockStateResponse", len)?;
         if !self.lock_token.is_empty() {
             struct_ser.serialize_field("lockToken", &self.lock_token)?;
         }
@@ -165,7 +165,7 @@ impl<'de> serde::Deserialize<'de> for LockStateResponse {
             type Value = LockStateResponse;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct boros.v1.LockStateResponse")
+                formatter.write_str("struct boros.v1.submit.LockStateResponse")
             }
 
             fn visit_map<V>(self, mut map_: V) -> std::result::Result<LockStateResponse, V::Error>
@@ -196,7 +196,7 @@ impl<'de> serde::Deserialize<'de> for LockStateResponse {
                 })
             }
         }
-        deserializer.deserialize_struct("boros.v1.LockStateResponse", FIELDS, GeneratedVisitor)
+        deserializer.deserialize_struct("boros.v1.submit.LockStateResponse", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for SubmitTxRequest {
@@ -210,7 +210,7 @@ impl serde::Serialize for SubmitTxRequest {
         if !self.tx.is_empty() {
             len += 1;
         }
-        let mut struct_ser = serializer.serialize_struct("boros.v1.SubmitTxRequest", len)?;
+        let mut struct_ser = serializer.serialize_struct("boros.v1.submit.SubmitTxRequest", len)?;
         if !self.tx.is_empty() {
             struct_ser.serialize_field("tx", &self.tx)?;
         }
@@ -264,7 +264,7 @@ impl<'de> serde::Deserialize<'de> for SubmitTxRequest {
             type Value = SubmitTxRequest;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct boros.v1.SubmitTxRequest")
+                formatter.write_str("struct boros.v1.submit.SubmitTxRequest")
             }
 
             fn visit_map<V>(self, mut map_: V) -> std::result::Result<SubmitTxRequest, V::Error>
@@ -287,7 +287,7 @@ impl<'de> serde::Deserialize<'de> for SubmitTxRequest {
                 })
             }
         }
-        deserializer.deserialize_struct("boros.v1.SubmitTxRequest", FIELDS, GeneratedVisitor)
+        deserializer.deserialize_struct("boros.v1.submit.SubmitTxRequest", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for SubmitTxResponse {
@@ -301,7 +301,7 @@ impl serde::Serialize for SubmitTxResponse {
         if !self.r#ref.is_empty() {
             len += 1;
         }
-        let mut struct_ser = serializer.serialize_struct("boros.v1.SubmitTxResponse", len)?;
+        let mut struct_ser = serializer.serialize_struct("boros.v1.submit.SubmitTxResponse", len)?;
         if !self.r#ref.is_empty() {
             struct_ser.serialize_field("ref", &self.r#ref.iter().map(pbjson::private::base64::encode).collect::<Vec<_>>())?;
         }
@@ -355,7 +355,7 @@ impl<'de> serde::Deserialize<'de> for SubmitTxResponse {
             type Value = SubmitTxResponse;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct boros.v1.SubmitTxResponse")
+                formatter.write_str("struct boros.v1.submit.SubmitTxResponse")
             }
 
             fn visit_map<V>(self, mut map_: V) -> std::result::Result<SubmitTxResponse, V::Error>
@@ -381,7 +381,7 @@ impl<'de> serde::Deserialize<'de> for SubmitTxResponse {
                 })
             }
         }
-        deserializer.deserialize_struct("boros.v1.SubmitTxResponse", FIELDS, GeneratedVisitor)
+        deserializer.deserialize_struct("boros.v1.submit.SubmitTxResponse", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for Tx {
@@ -401,7 +401,7 @@ impl serde::Serialize for Tx {
         if self.lock_token.is_some() {
             len += 1;
         }
-        let mut struct_ser = serializer.serialize_struct("boros.v1.Tx", len)?;
+        let mut struct_ser = serializer.serialize_struct("boros.v1.submit.Tx", len)?;
         if !self.raw.is_empty() {
             #[allow(clippy::needless_borrow)]
             struct_ser.serialize_field("raw", pbjson::private::base64::encode(&self.raw).as_str())?;
@@ -469,7 +469,7 @@ impl<'de> serde::Deserialize<'de> for Tx {
             type Value = Tx;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("struct boros.v1.Tx")
+                formatter.write_str("struct boros.v1.submit.Tx")
             }
 
             fn visit_map<V>(self, mut map_: V) -> std::result::Result<Tx, V::Error>
@@ -510,6 +510,6 @@ impl<'de> serde::Deserialize<'de> for Tx {
                 })
             }
         }
-        deserializer.deserialize_struct("boros.v1.Tx", FIELDS, GeneratedVisitor)
+        deserializer.deserialize_struct("boros.v1.submit.Tx", FIELDS, GeneratedVisitor)
     }
 }

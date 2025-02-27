@@ -3,37 +3,98 @@
 
 ## Table of Contents
 
-- [boros/v1/state.proto](#boros_v1_state-proto)
-    - [FetchStateRequest](#boros-v1-FetchStateRequest)
-    - [FetchStateResponse](#boros-v1-FetchStateResponse)
+- [boros/v1/submit.proto](#boros_v1_submit-proto)
+    - [LockStateRequest](#boros-v1-submit-LockStateRequest)
+    - [LockStateResponse](#boros-v1-submit-LockStateResponse)
+    - [SubmitTxRequest](#boros-v1-submit-SubmitTxRequest)
+    - [SubmitTxResponse](#boros-v1-submit-SubmitTxResponse)
+    - [Tx](#boros-v1-submit-Tx)
   
-    - [StateService](#boros-v1-StateService)
+    - [SubmitService](#boros-v1-submit-SubmitService)
   
 - [Scalar Value Types](#scalar-value-types)
 
 
 
-<a name="boros_v1_state-proto"></a>
+<a name="boros_v1_submit-proto"></a>
 <p align="right"><a href="#top">Top</a></p>
 
-## boros/v1/state.proto
+## boros/v1/submit.proto
 
 
 
-<a name="boros-v1-FetchStateRequest"></a>
+<a name="boros-v1-submit-LockStateRequest"></a>
 
-### FetchStateRequest
-
-
+### LockStateRequest
 
 
 
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| queue | [string](#string) |  |  |
 
 
-<a name="boros-v1-FetchStateResponse"></a>
 
-### FetchStateResponse
 
+
+
+<a name="boros-v1-submit-LockStateResponse"></a>
+
+### LockStateResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| lock_token | [string](#string) |  |  |
+| cbor | [string](#string) |  | TODO: use u5c transaction |
+
+
+
+
+
+
+<a name="boros-v1-submit-SubmitTxRequest"></a>
+
+### SubmitTxRequest
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| tx | [Tx](#boros-v1-submit-Tx) | repeated |  |
+
+
+
+
+
+
+<a name="boros-v1-submit-SubmitTxResponse"></a>
+
+### SubmitTxResponse
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| ref | [bytes](#bytes) | repeated |  |
+
+
+
+
+
+
+<a name="boros-v1-submit-Tx"></a>
+
+### Tx
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| raw | [bytes](#bytes) |  | Raw transaction data. |
+| queue | [string](#string) | optional |  |
+| lock_token | [string](#string) | optional |  |
 
 
 
@@ -46,14 +107,15 @@
  
 
 
-<a name="boros-v1-StateService"></a>
+<a name="boros-v1-submit-SubmitService"></a>
 
-### StateService
+### SubmitService
 
 
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
-| FetchState | [FetchStateRequest](#boros-v1-FetchStateRequest) | [FetchStateResponse](#boros-v1-FetchStateResponse) |  |
+| SubmitTx | [SubmitTxRequest](#boros-v1-submit-SubmitTxRequest) | [SubmitTxResponse](#boros-v1-submit-SubmitTxResponse) |  |
+| LockState | [LockStateRequest](#boros-v1-submit-LockStateRequest) | [LockStateResponse](#boros-v1-submit-LockStateResponse) |  |
 
  
 

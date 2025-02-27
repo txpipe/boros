@@ -104,11 +104,11 @@ pub mod submit_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/boros.v1.SubmitService/SubmitTx",
+                "/boros.v1.submit.SubmitService/SubmitTx",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("boros.v1.SubmitService", "SubmitTx"));
+                .insert(GrpcMethod::new("boros.v1.submit.SubmitService", "SubmitTx"));
             self.inner.unary(req, path, codec).await
         }
         ///
@@ -130,11 +130,11 @@ pub mod submit_service_client {
                 })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static(
-                "/boros.v1.SubmitService/LockState",
+                "/boros.v1.submit.SubmitService/LockState",
             );
             let mut req = request.into_request();
             req.extensions_mut()
-                .insert(GrpcMethod::new("boros.v1.SubmitService", "LockState"));
+                .insert(GrpcMethod::new("boros.v1.submit.SubmitService", "LockState"));
             self.inner.unary(req, path, codec).await
         }
     }
@@ -243,7 +243,7 @@ pub mod submit_service_server {
         fn call(&mut self, req: http::Request<B>) -> Self::Future {
             let inner = self.inner.clone();
             match req.uri().path() {
-                "/boros.v1.SubmitService/SubmitTx" => {
+                "/boros.v1.submit.SubmitService/SubmitTx" => {
                     #[allow(non_camel_case_types)]
                     struct SubmitTxSvc<T: SubmitService>(pub Arc<T>);
                     impl<
@@ -289,7 +289,7 @@ pub mod submit_service_server {
                     };
                     Box::pin(fut)
                 }
-                "/boros.v1.SubmitService/LockState" => {
+                "/boros.v1.submit.SubmitService/LockState" => {
                     #[allow(non_camel_case_types)]
                     struct LockStateSvc<T: SubmitService>(pub Arc<T>);
                     impl<
@@ -373,6 +373,6 @@ pub mod submit_service_server {
         }
     }
     impl<T: SubmitService> tonic::server::NamedService for SubmitServiceServer<T> {
-        const NAME: &'static str = "boros.v1.SubmitService";
+        const NAME: &'static str = "boros.v1.submit.SubmitService";
     }
 }
