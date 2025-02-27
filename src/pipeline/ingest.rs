@@ -22,6 +22,7 @@ use crate::{
     priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
+use super::CAP;
 
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Vec<Transaction>", worker = "Worker")]
@@ -140,7 +141,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<WorkSchedule<Vec<Transaction>>, WorkerError> {
         let transactions = stage
             .priority
-            .next(TransactionStatus::Pending)
+            .next(TransactionStatus::Pending, CAP)
             .await
             .or_retry()?;
 
