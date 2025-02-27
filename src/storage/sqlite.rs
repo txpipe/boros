@@ -1,10 +1,11 @@
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::{Error, Result};
 use chrono::Utc;
+use itertools::Itertools;
 use sqlx::{sqlite::SqliteRow, FromRow, Row};
 
-use super::{Cursor, Transaction, TransactionStatus};
+use super::{Cursor, Transaction, TransactionState, TransactionStatus};
 
 pub struct SqliteStorage {
     db: sqlx::sqlite::SqlitePool,
@@ -42,7 +43,6 @@ impl SqliteStorage {
 impl FromRow<'_, SqliteRow> for Transaction {
     fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
         let status: &str = row.try_get("status")?;
-        let priority: u32 = row.try_get("priority")?;
 
         Ok(Self {
             id: row.try_get("id")?,
@@ -50,13 +50,20 @@ impl FromRow<'_, SqliteRow> for Transaction {
             status: status
                 .parse()
                 .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
-            priority: priority
-                .try_into()
-                .map_err(|err: Error| sqlx::Error::Decode(err.into()))?,
             slot: row.try_get("slot")?,
+            queue: row.try_get("queue")?,
             dependencies: None,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
+        })
+    }
+}
+
+impl FromRow<'_, SqliteRow> for TransactionState {
+    fn from_row(row: &SqliteRow) -> sqlx::Result<Self> {
+        Ok(Self {
+            queue: row.try_get("queue")?,
+            count: row.try_get("count")?,
         })
     }
 }
@@ -75,7 +82,6 @@ impl SqliteTransaction {
 
         for tx in txs {
             let status = tx.status.clone().to_string();
-            let priority: u32 = tx.priority.clone().try_into()?;
 
             sqlx::query!(
                 r#"
@@ -83,7 +89,7 @@ impl SqliteTransaction {
                         id,
                         raw,
                         status,
-                        priority,
+                        queue,
                         created_at,
                         updated_at
                     )
@@ -92,7 +98,7 @@ impl SqliteTransaction {
                 tx.id,
                 tx.raw,
                 status,
-                priority,
+                tx.queue,
                 tx.created_at,
                 tx.updated_at
             )
@@ -130,7 +136,7 @@ impl SqliteTransaction {
                     	raw,
                     	status,
                         slot,
-                    	priority,
+                    	queue,
                     	created_at,
                     	updated_at
                     FROM
@@ -157,7 +163,7 @@ impl SqliteTransaction {
                     	raw,
                     	status,
                         slot,
-                    	priority,
+                    	queue,
                     	created_at,
                     	updated_at
                     FROM
@@ -174,32 +180,73 @@ impl SqliteTransaction {
         Ok(transactions)
     }
 
-    pub async fn next(&self, status: TransactionStatus) -> Result<Option<Transaction>> {
-        let transaction = sqlx::query_as::<_, Transaction>(
+    pub async fn next(
+        &self,
+        status: TransactionStatus,
+        queues: HashMap<String, u16>,
+    ) -> Result<Vec<Transaction>> {
+        let mut param_index = 2;
+        let query = queues
+            .iter()
+            .map(|_| {
+                let queue_param = param_index;
+                let limit_param = param_index + 1;
+                param_index += 2;
+                format!(
+                    r#"
+                        SELECT
+                        	id,
+                        	raw,
+                        	status,
+                        	slot,
+                        	queue,
+                        	created_at,
+                        	updated_at
+                        FROM (
+                        	SELECT
+                        		*
+                        	FROM
+                        		tx
+                        	WHERE
+                        		tx.status = $1 AND tx.queue = ${}
+                        	ORDER BY
+                        		created_at
+                        	LIMIT ${}
+                        )
+                    "#,
+                    queue_param, limit_param
+                )
+            })
+            .join("UNION ALL");
+
+        let mut q = sqlx::query_as::<_, Transaction>(&query).bind(status.to_string());
+        for (queue, limit) in queues {
+            q = q.bind(queue).bind(limit);
+        }
+        let transactions = q.fetch_all(&self.sqlite.db).await?;
+
+        Ok(transactions)
+    }
+
+    pub async fn state(&self, status: TransactionStatus) -> Result<Vec<TransactionState>> {
+        let state = sqlx::query_as::<_, TransactionState>(
             r#"
                     SELECT
-                    	id,
-                    	raw,
-                    	status,
-                        slot,
-                    	priority,
-                    	created_at,
-                    	updated_at
+                    	queue,
+                    	COUNT(*) as count
                     FROM
                     	tx
                     WHERE
                     	tx.status = $1
-                    ORDER BY
-                    	priority,
-                    	created_at ASC
-                    LIMIT 1;
+                    GROUP BY
+                    	tx.queue;
             "#,
         )
         .bind(status.to_string())
-        .fetch_optional(&self.sqlite.db)
+        .fetch_all(&self.sqlite.db)
         .await?;
 
-        Ok(transaction)
+        Ok(state)
     }
 
     pub async fn update(&self, tx: &Transaction) -> Result<()> {
@@ -324,21 +371,55 @@ impl SqliteCursor {
 }
 
 #[cfg(test)]
-mod sqlite_transaction_tests {
+pub mod sqlite_utils_tests {
     use std::sync::Arc;
 
-    use crate::storage::{Transaction, TransactionStatus};
+    use crate::storage::Transaction;
 
-    use super::{SqliteStorage, SqliteTransaction};
+    use super::{SqliteCursor, SqliteStorage, SqliteTransaction};
 
-    async fn mock_sqlite() -> SqliteTransaction {
+    pub async fn mock_sqlite_transaction() -> SqliteTransaction {
         let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
         SqliteTransaction::new(sqlite_storage)
     }
 
+    pub async fn mock_sqlite_cursor() -> SqliteCursor {
+        let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
+        SqliteCursor::new(sqlite_storage)
+    }
+
+    pub struct TransactionList(pub Vec<Transaction>);
+    impl<T, U> From<Vec<(T, U)>> for TransactionList
+    where
+        T: Into<String>,
+        U: Into<String>,
+    {
+        fn from(tuples: Vec<(T, U)>) -> Self {
+            let transactions = tuples
+                .into_iter()
+                .map(|(id, queue)| Transaction {
+                    id: id.into(),
+                    queue: queue.into(),
+                    ..Default::default()
+                })
+                .collect();
+            TransactionList(transactions)
+        }
+    }
+}
+
+#[cfg(test)]
+mod sqlite_transaction_tests {
+    use std::collections::HashMap;
+
+    use crate::storage::{
+        sqlite::sqlite_utils_tests::{mock_sqlite_transaction, TransactionList},
+        Transaction, TransactionStatus,
+    };
+
     #[tokio::test]
     async fn it_should_create() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
         let transaction = Transaction::default();
 
         let result = storage.create(&vec![transaction]).await;
@@ -347,7 +428,7 @@ mod sqlite_transaction_tests {
 
     #[tokio::test]
     async fn it_should_create_with_dependencies() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
         let mut transaction_1 = Transaction::default();
         transaction_1.id = "hex1".into();
 
@@ -361,7 +442,7 @@ mod sqlite_transaction_tests {
 
     #[tokio::test]
     async fn it_should_fail_create_with_invalid_dependencies() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
 
         let mut transaction = Transaction::default();
         transaction.dependencies = Some(vec!["something".into()]);
@@ -372,19 +453,44 @@ mod sqlite_transaction_tests {
 
     #[tokio::test]
     async fn it_should_find_next() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
         let transaction = Transaction::default();
 
         storage.create(&vec![transaction]).await.unwrap();
 
-        let result = storage.next(TransactionStatus::Pending).await;
+        let queues = HashMap::from_iter([("default".into(), 1)]);
+        let result = storage.next(TransactionStatus::Pending, queues).await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
+        assert!(!result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn it_should_find_next_many_queues() {
+        let storage = mock_sqlite_transaction().await;
+
+        let data = vec![
+            ("1", "banana"),
+            ("2", "banana"),
+            ("3", "orange"),
+            ("4", "default"),
+        ];
+        let transaction_list: TransactionList = data.into();
+        storage.create(&transaction_list.0).await.unwrap();
+
+        let queues = HashMap::from_iter([
+            ("banana".into(), 1),
+            ("orange".into(), 1),
+            ("default".into(), 1),
+        ]);
+        let result = storage.next(TransactionStatus::Pending, queues).await;
+        assert!(result.is_ok());
+        assert!(!result.as_ref().unwrap().is_empty());
+        assert!(result.unwrap().len() == 3);
     }
 
     #[tokio::test]
     async fn it_should_update() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
 
         let transaction = Transaction::default();
         storage.create(&vec![transaction]).await.unwrap();
@@ -394,14 +500,15 @@ mod sqlite_transaction_tests {
         let result = storage.update(&transaction).await;
         assert!(result.is_ok());
 
-        let result = storage.next(TransactionStatus::Validated).await;
+        let queues = HashMap::from_iter([("default".into(), 1)]);
+        let result = storage.next(TransactionStatus::Validated, queues).await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
+        assert!(!result.unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn it_should_update_batch() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
 
         let mut batch = Vec::new();
 
@@ -426,14 +533,14 @@ mod sqlite_transaction_tests {
         let result = storage.update_batch(&batch).await;
         assert!(result.is_ok());
 
-        let result = storage.next(TransactionStatus::Confirmed).await;
+        let result = storage.find(TransactionStatus::Confirmed).await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
+        assert!(!result.unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn it_should_find() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
         let transaction = Transaction::default();
 
         storage.create(&vec![transaction]).await.unwrap();
@@ -445,7 +552,7 @@ mod sqlite_transaction_tests {
 
     #[tokio::test]
     async fn it_should_find_to_rollback() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
 
         let transaction = Transaction::default();
         storage.create(&vec![transaction]).await.unwrap();
@@ -464,7 +571,7 @@ mod sqlite_transaction_tests {
 
     #[tokio::test]
     async fn it_should_return_empty_find_to_rollback_when_tx_slot_lower_than_block_slot() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_transaction().await;
 
         let transaction = Transaction::default();
         storage.create(&vec![transaction]).await.unwrap();
@@ -484,20 +591,12 @@ mod sqlite_transaction_tests {
 
 #[cfg(test)]
 mod sqlite_cursor_tests {
-    use std::sync::Arc;
 
-    use crate::storage::Cursor;
-
-    use super::{SqliteCursor, SqliteStorage};
-
-    async fn mock_sqlite() -> SqliteCursor {
-        let sqlite_storage = Arc::new(SqliteStorage::ephemeral().await.unwrap());
-        SqliteCursor::new(sqlite_storage)
-    }
+    use crate::storage::{sqlite::sqlite_utils_tests::mock_sqlite_cursor, Cursor};
 
     #[tokio::test]
     async fn it_should_set() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_cursor().await;
         let cursor = Cursor::default();
 
         let result = storage.set(&cursor).await;
@@ -506,7 +605,7 @@ mod sqlite_cursor_tests {
 
     #[tokio::test]
     async fn it_should_set_when_it_updates() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_cursor().await;
 
         let cursor = Cursor::default();
         storage.set(&cursor).await.unwrap();
@@ -526,7 +625,7 @@ mod sqlite_cursor_tests {
 
     #[tokio::test]
     async fn it_should_find_current() {
-        let storage = mock_sqlite().await;
+        let storage = mock_sqlite_cursor().await;
         let cursor = Cursor::default();
         storage.set(&cursor).await.unwrap();
 
