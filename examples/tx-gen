@@ -45,4 +45,5 @@ CBOR=$(cat ./tx.signed | jq -r '.cborHex')
 
 echo "signed tx cbor: $CBOR"
 
-grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\"}]}" $BOROS_RPC utxorpc.v1alpha.submit.SubmitService.SubmitTx
+# grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\"}]}" $BOROS_RPC utxorpc.v1alpha.submit.SubmitService.SubmitTx
+grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\"}]}" $BOROS_RPC boros.v1.submit.SubmitService.SubmitTx
