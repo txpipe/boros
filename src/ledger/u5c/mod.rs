@@ -4,10 +4,10 @@ use anyhow::bail;
 use async_stream::stream;
 use futures::{Stream, TryStreamExt};
 use pallas::{
-    codec::utils::KeyValuePairs, crypto::hash::Hash, interop::utxorpc::spec::{
-        cardano::{
-            CostModel, Tx,
-        },
+    codec::utils::KeyValuePairs,
+    crypto::hash::Hash,
+    interop::utxorpc::spec::{
+        cardano::{CostModel, Tx},
         query::{
             any_chain_params::{self, Params},
             query_service_client::QueryServiceClient,
@@ -17,12 +17,16 @@ use pallas::{
             any_chain_block, follow_tip_response, sync_service_client::SyncServiceClient, BlockRef,
             FollowTipRequest, ReadTipRequest,
         },
-    }, ledger::{
+    },
+    ledger::{
         primitives::{
-            self, conway::{DRepVotingThresholds, PoolVotingThresholds}, ExUnitPrices
+            self,
+            conway::{DRepVotingThresholds, PoolVotingThresholds},
+            ExUnitPrices,
         },
-        traverse::{update::ConwayCostModels, Era}, validate::utils::{ConwayProtParams, EraCbor, MultiEraProtocolParameters},
-    }, 
+        traverse::{update::ConwayCostModels, Era},
+        validate::utils::{ConwayProtParams, EraCbor, MultiEraProtocolParameters},
+    },
 };
 use serde::Deserialize;
 use tonic::{

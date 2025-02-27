@@ -5,18 +5,24 @@ use pallas::{
     crypto::hash::Hash,
     ledger::{
         primitives::TransactionInput,
-        traverse::{wellknown::GenesisValues, MultiEraInput, MultiEraOutput, MultiEraTx}, validate::{phase_one::validate_tx, phase_two::evaluate_tx, uplc::{script_context::SlotConfig, EvalReport}, utils::{AccountState, CertState, Environment, UTxOs}},
+        traverse::{wellknown::GenesisValues, MultiEraInput, MultiEraOutput, MultiEraTx},
+        validate::{
+            phase_one::validate_tx,
+            phase_two::evaluate_tx,
+            uplc::{script_context::SlotConfig, EvalReport},
+            utils::{AccountState, CertState, Environment, UTxOs},
+        },
     },
 };
 use tokio::time::sleep;
 use tracing::info;
 
+use super::CAP;
 use crate::{
     ledger::u5c::U5cDataAdapter,
     priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
-use super::CAP;
 
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Vec<Transaction>", worker = "Worker")]
