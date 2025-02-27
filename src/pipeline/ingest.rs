@@ -8,7 +8,6 @@ use crate::{
     priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
-
 use super::CAP;
 
 #[derive(Stage)]
