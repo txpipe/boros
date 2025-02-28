@@ -51,7 +51,7 @@ impl PeerManager {
                 .init()
                 .await
                 .map_err(PeerManagerError::PeerInitialization)?;
-            
+
             *peer = Some(new_peer);
         }
 
@@ -111,6 +111,23 @@ impl PeerManager {
         let mut new_peer = Peer::new(peer_addr, self.network_magic);
         let timeout_duration = Duration::from_secs(5);
 
+        // Peer sharing handshake query with a timeout.
+        let peer_sharing_result =
+            timeout(timeout_duration, new_peer.query_peer_sharing_mode()).await;
+
+        new_peer.is_peer_sharing_enabled = match peer_sharing_result {
+            Ok(Ok(peer_sharing_enabled)) => peer_sharing_enabled,
+            Ok(Err(e)) => {
+                error!("Peer {} peer sharing query error: {:?}", peer_addr, e);
+                false
+            }
+            _ => {
+                error!("Peer {} peer sharing query timed out", peer_addr);
+                false
+            }
+        };
+
+        // Peer initialization with a timeout.
         match timeout(timeout_duration, new_peer.init()).await {
             Ok(Ok(())) => {
                 info!("Peer {} connected successfully", peer_addr);
