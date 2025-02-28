@@ -47,8 +47,8 @@ pub enum Event {
 
 #[derive(Deserialize, Clone)]
 pub struct Config {
-    uri: String,
-    metadata: HashMap<String, String>,
+    pub uri: String,
+    pub metadata: HashMap<String, String>,
 }
 
 // TODO: remove dead_code after the implementation

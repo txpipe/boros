@@ -181,16 +181,25 @@ impl gasket::framework::Worker<Stage> for Worker {
 
 #[cfg(test)]
 mod ingest_tests {
+    use std::collections::{HashMap, HashSet};
+    use std::net::{SocketAddr, SocketAddrV4};
+    use std::str::FromStr;
     use std::sync::Arc;
 
     use crate::ledger::u5c::U5cDataAdapterImpl;
+    use crate::pipeline::fanout::PeerManagerConfig;
     use crate::pipeline::ingest;
-    use crate::priority::Priority;
-    use crate::storage::{
-        sqlite::sqlite_utils_tests::{mock_sqlite_cursor, mock_sqlite_transaction},
-        Transaction, TransactionStatus,
+    use crate::priority::{Priority, QueueConfig};
+    use crate::{
+        ledger::u5c::Config as U5cConfig,
+        pipeline::monitor::Config as MonitorConfig,
+        server::Config as ServerConfig,
+        storage::{
+            sqlite::sqlite_utils_tests::{mock_sqlite_cursor, mock_sqlite_transaction},
+            Config as StorageConfig, Transaction, TransactionStatus,
+        },
+        Config as MainConfig,
     };
-    use crate::Config;
 
     /// Test file = conway12.tx
     /// This test is expected to pass because the transaction is valid.
@@ -200,7 +209,7 @@ mod ingest_tests {
         let storage = Arc::new(mock_sqlite_transaction().await);
         let cursor = Arc::new(mock_sqlite_cursor().await);
         let cursor = cursor.current().await.unwrap().map(|c| c.into());
-        let config = Config::new().expect("invalid config file");
+        let config = init_config();
         let u5c_data_adapter = Arc::new(
             U5cDataAdapterImpl::try_new(config.u5c, cursor)
                 .await
@@ -234,7 +243,7 @@ mod ingest_tests {
         let storage = Arc::new(mock_sqlite_transaction().await);
         let cursor = Arc::new(mock_sqlite_cursor().await);
         let cursor = cursor.current().await.unwrap().map(|c| c.into());
-        let config = Config::new().expect("invalid config file");
+        let config = init_config();
         let u5c_data_adapter = Arc::new(
             U5cDataAdapterImpl::try_new(config.u5c, cursor)
                 .await
@@ -268,7 +277,7 @@ mod ingest_tests {
         let storage = Arc::new(mock_sqlite_transaction().await);
         let cursor = Arc::new(mock_sqlite_cursor().await);
         let cursor = cursor.current().await.unwrap().map(|c| c.into());
-        let config = Config::new().expect("invalid config file");
+        let config = init_config();
         let u5c_data_adapter = Arc::new(
             U5cDataAdapterImpl::try_new(config.u5c, cursor)
                 .await
@@ -314,7 +323,7 @@ mod ingest_tests {
         let storage = Arc::new(mock_sqlite_transaction().await);
         let cursor = Arc::new(mock_sqlite_cursor().await);
         let cursor = cursor.current().await.unwrap().map(|c| c.into());
-        let config = Config::new().expect("invalid config file");
+        let config = init_config();
         let u5c_data_adapter = Arc::new(
             U5cDataAdapterImpl::try_new(config.u5c, cursor)
                 .await
@@ -349,7 +358,7 @@ mod ingest_tests {
         let storage = Arc::new(mock_sqlite_transaction().await);
         let cursor = Arc::new(mock_sqlite_cursor().await);
         let cursor = cursor.current().await.unwrap().map(|c| c.into());
-        let config = Config::new().expect("invalid config file");
+        let config = init_config();
         let u5c_data_adapter = Arc::new(
             U5cDataAdapterImpl::try_new(config.u5c, cursor)
                 .await
@@ -373,5 +382,50 @@ mod ingest_tests {
             "Evaluation failed: {:?}",
             evaluation_result.iter().len()
         );
+    }
+
+    fn init_config() -> MainConfig {
+        let server = ServerConfig {
+            listen_address: SocketAddr::V4(SocketAddrV4::from_str("0.0.0.0:50052").unwrap()),
+        };
+
+        let storage = StorageConfig {
+            db_path: "boros.db".to_string(),
+        };
+
+        let peer_manager = PeerManagerConfig {
+            peers: vec![
+                "preview-r1.panl.org:3015".to_string(),
+                "adaboy-preview-1c.gleeze.com:5000".to_string(),
+                "testicles.kiwipool.org:9720".to_string(),
+            ],
+            desired_peer_count: 10,
+            peers_per_request: 10,
+        };
+
+        let monitor = MonitorConfig {
+            retry_slot_diff: 1000,
+        };
+
+        let queues: HashSet<QueueConfig> = vec![QueueConfig {
+            name: "banana".to_string(),
+            weight: 2,
+        }]
+        .into_iter()
+        .collect();
+
+        let u5c = U5cConfig {
+            uri: "http://localhost:50051".to_string(),
+            metadata: HashMap::new(),
+        };
+
+        MainConfig {
+            server,
+            storage,
+            peer_manager,
+            monitor,
+            queues,
+            u5c,
+        }
     }
 }

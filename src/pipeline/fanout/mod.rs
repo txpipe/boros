@@ -169,9 +169,9 @@ impl gasket::framework::Worker<Stage> for Worker {
 
 #[derive(Deserialize, Clone)]
 pub struct PeerManagerConfig {
-    peers: Vec<String>,
-    desired_peer_count: u8,
-    peers_per_request: u8,
+    pub peers: Vec<String>,
+    pub desired_peer_count: u8,
+    pub peers_per_request: u8,
 }
 
 // Test for Fanout Stage
