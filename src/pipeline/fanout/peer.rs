@@ -76,17 +76,9 @@ impl Peer {
             PeerError::Initialization(format!("Failed to send init message to peer: {:?}", e))
         })?;
 
-        let mut tx_client_guard = self.tx_submit_client.lock().await;
-        *tx_client_guard = Some(tx_submit_client);
-        drop(tx_client_guard);
-
-        let mut peer_sharing_client_guard = self.peer_sharing_client.lock().await;
-        *peer_sharing_client_guard = Some(peer_sharing_client);
-        drop(peer_sharing_client_guard);
-
-        let mut plexer_client_guard = self.plexer_client.lock().await;
-        *plexer_client_guard = Some(plexer_client);
-        drop(plexer_client_guard);
+        self.tx_submit_client = Arc::new(Mutex::new(Some(tx_submit_client)));
+        self.peer_sharing_client = Arc::new(Mutex::new(Some(peer_sharing_client)));
+        self.plexer_client = Arc::new(Mutex::new(Some(plexer_client)));
 
         self.is_alive = true;
         info!(peer=%self.peer_addr, "Peer initialized");
