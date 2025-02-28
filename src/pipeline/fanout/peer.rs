@@ -84,24 +84,29 @@ impl Peer {
             }
         };
 
-        client
-            .peersharing()
-            .send_share_request(desired_peers)
-            .await
-            .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to send share request: {:?}", e))
-            })?;
-
         let mut discovered = vec![];
-        if let Ok(peers) = client
-            .peersharing()
-            .recv_peer_addresses()
-            .await
-            .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {:?}", e))
-            })
-        {
-            discovered.extend(peers);
+        if client.peersharing().has_agency() {
+            client
+                .peersharing()
+                .send_share_request(desired_peers)
+                .await
+                .map_err(|e| {
+                    PeerError::PeerDiscovery(format!("Failed to send share request: {:?}", e))
+                })?;
+
+            if let Ok(peers) = client
+                .peersharing()
+                .recv_peer_addresses()
+                .await
+                .map_err(|e| {
+                    PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {:?}", e))
+                })
+            {
+                discovered.extend(peers);
+            }
+        } else {
+            info!(peer=%self.peer_addr, "Agency not available; disabling peer sharing");
+            self.is_peer_sharing_enabled = false;
         }
 
         Ok(discovered)
