@@ -1,4 +1,3 @@
-// src/pipeline/broadcast/mod.rs
 use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
@@ -27,13 +26,21 @@ pub struct Stage {
 }
 
 impl Stage {
-    pub fn new(config: PeerManagerConfig, storage: Arc<SqliteTransaction>, priority: Arc<Priority>) -> Self {
-        Self { config, storage, priority }
+    pub fn new(
+        config: PeerManagerConfig,
+        storage: Arc<SqliteTransaction>,
+        priority: Arc<Priority>,
+    ) -> Self {
+        Self {
+            config,
+            storage,
+            priority,
+        }
     }
 }
 
 pub struct Worker {
-    tx: broadcast::Sender<Vec<u8>>
+    tx: broadcast::Sender<Vec<u8>>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -55,9 +62,11 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<Vec<Transaction>>, WorkerError> {
+        let current_cap = CAP - self.tx.len() as u16;
+
         let transactions = stage
             .priority
-            .next(TransactionStatus::Validated, CAP)
+            .next(TransactionStatus::Validated, current_cap)
             .await
             .or_retry()?;
 
