@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use itertools::Itertools;
 use pallas::crypto::hash::Hash;
-use pallas::network::miniprotocols::peersharing::Client as PeerSharingClient;
 use pallas::network::miniprotocols::{
     txsubmission::Client as TxSubmitClient,
     txsubmission::{EraTxBody, EraTxId, Request},
@@ -34,7 +33,6 @@ pub struct Peer {
     mempool: Arc<Mutex<Mempool>>,
     plexer_client: Arc<Mutex<Option<RunningPlexer>>>,
     tx_submit_client: Arc<Mutex<Option<TxSubmitClient>>>,
-    peer_sharing_client: Arc<Mutex<Option<PeerSharingClient>>>,
     network_magic: u64,
     unfulfilled_request: Arc<RwLock<Option<usize>>>,
     receiver: Arc<RwLock<Receiver<Vec<u8>>>>,
@@ -48,7 +46,6 @@ impl Peer {
             mempool: Arc::new(Mutex::new(Mempool::new())),
             plexer_client: Arc::new(Mutex::new(None)),
             tx_submit_client: Arc::new(Mutex::new(None)),
-            peer_sharing_client: Arc::new(Mutex::new(None)),
             peer_addr: peer_addr.to_string(),
             network_magic,
             unfulfilled_request: Arc::new(RwLock::new(None)),
@@ -65,7 +62,6 @@ impl Peer {
             })?;
 
         let mut tx_submit_client = client.txsubmission;
-        let peer_sharing_client = client.peersharing;
         let plexer_client = client.plexer;
 
         tx_submit_client.send_init().await.map_err(|e| {
@@ -73,7 +69,6 @@ impl Peer {
         })?;
 
         self.tx_submit_client = Arc::new(Mutex::new(Some(tx_submit_client)));
-        self.peer_sharing_client = Arc::new(Mutex::new(Some(peer_sharing_client)));
         self.plexer_client = Arc::new(Mutex::new(Some(plexer_client)));
 
         self.is_alive = true;
