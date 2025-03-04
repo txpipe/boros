@@ -7,6 +7,7 @@ use tokio::time::sleep;
 use tracing::info;
 
 use crate::{
+    ledger::u5c::U5cDataAdapter,
     priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
@@ -23,6 +24,7 @@ pub struct Stage {
     config: PeerManagerConfig,
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
 }
 
 impl Stage {
@@ -30,11 +32,13 @@ impl Stage {
         config: PeerManagerConfig,
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
+        u5c_adapter: Arc<dyn U5cDataAdapter>,
     ) -> Self {
         Self {
             config,
             storage,
             priority,
+            u5c_adapter,
         }
     }
 }
@@ -98,7 +102,11 @@ impl gasket::framework::Worker<Stage> for Worker {
                 info!("No receivers available for broadcasting");
             }
 
+            let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
+
             tx.status = TransactionStatus::InFlight;
+            tx.slot = Some(tip.0);
+
             stage.storage.update(&tx).await.or_retry()?;
         }
 

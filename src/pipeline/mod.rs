@@ -46,9 +46,10 @@ pub async fn run(
         config.peer_manager.clone(),
         tx_storage.clone(),
         priority.clone(),
+        u5c_data_adapter.clone(),
     );
 
-    let _monitor = monitor::Stage::new(
+    let monitor = monitor::Stage::new(
         config.monitor,
         u5c_data_adapter.clone(),
         tx_storage.clone(),
@@ -58,11 +59,10 @@ pub async fn run(
     let policy: gasket::runtime::Policy = Default::default();
 
     let ingest = gasket::runtime::spawn_stage(ingest, policy.clone());
-    let _fanout = gasket::runtime::spawn_stage(_fanout, policy.clone());
-    let _monitor = gasket::runtime::spawn_stage(_monitor, policy.clone());
+    let monitor = gasket::runtime::spawn_stage(monitor, policy.clone());
     let broadcast = gasket::runtime::spawn_stage(broadcast, policy.clone());
 
-    let daemon = gasket::daemon::Daemon::new(vec![ingest, broadcast]);
+    let daemon = gasket::daemon::Daemon::new(vec![ingest, broadcast, monitor]);
     daemon.block();
 
     Ok(())
