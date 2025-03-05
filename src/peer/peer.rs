@@ -1,8 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 
 use itertools::Itertools;
 use pallas::crypto::hash::Hash;
+use pallas::network::miniprotocols::{
+    peersharing::Client as PeerSharingClient, peersharing::PeerAddress,
+};
 use pallas::network::miniprotocols::{
     txsubmission::Client as TxSubmitClient,
     txsubmission::{EraTxBody, EraTxId, Request},
@@ -10,6 +14,7 @@ use pallas::network::miniprotocols::{
 use pallas::network::multiplexer::RunningPlexer;
 use pallas::network::{facades::PeerClient, miniprotocols::txsubmission::TxIdAndSize};
 use thiserror::Error;
+use tokio::sync::broadcast::error::TryRecvError;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task;
@@ -22,6 +27,9 @@ pub enum PeerError {
     #[error("Peer initialization failed: {0}")]
     Initialization(String),
 
+    #[error("Peer discovery failed: {0}")]
+    PeerDiscovery(String),
+
     #[error("Tx Submission failed: {0}")]
     TxSubmission(String),
 
@@ -33,10 +41,12 @@ pub struct Peer {
     mempool: Arc<Mutex<Mempool>>,
     plexer_client: Arc<Mutex<Option<RunningPlexer>>>,
     tx_submit_client: Arc<Mutex<Option<TxSubmitClient>>>,
+    peer_sharing_client: Arc<Mutex<Option<PeerSharingClient>>>,
     network_magic: u64,
     unfulfilled_request: Arc<RwLock<Option<usize>>>,
     receiver: Arc<RwLock<Receiver<Vec<u8>>>>,
     pub peer_addr: String,
+    pub is_peer_sharing_enabled: bool,
     pub is_alive: bool,
 }
 
@@ -46,10 +56,12 @@ impl Peer {
             mempool: Arc::new(Mutex::new(Mempool::new())),
             plexer_client: Arc::new(Mutex::new(None)),
             tx_submit_client: Arc::new(Mutex::new(None)),
+            peer_sharing_client: Arc::new(Mutex::new(None)),
             peer_addr: peer_addr.to_string(),
             network_magic,
             unfulfilled_request: Arc::new(RwLock::new(None)),
             receiver: Arc::new(RwLock::new(receiver)),
+            is_peer_sharing_enabled: false,
             is_alive: false,
         }
     }
@@ -62,6 +74,7 @@ impl Peer {
             })?;
 
         let mut tx_submit_client = client.txsubmission;
+        let peer_sharing_client = client.peersharing;
         let plexer_client = client.plexer;
 
         tx_submit_client.send_init().await.map_err(|e| {
@@ -69,35 +82,72 @@ impl Peer {
         })?;
 
         self.tx_submit_client = Arc::new(Mutex::new(Some(tx_submit_client)));
+        self.peer_sharing_client = Arc::new(Mutex::new(Some(peer_sharing_client)));
         self.plexer_client = Arc::new(Mutex::new(Some(plexer_client)));
 
         self.is_alive = true;
         info!(peer=%self.peer_addr, "Peer initialized");
 
-        self.start_recv();
         self.start_background_task();
 
         Ok(())
     }
 
-    fn start_recv(&self) {
-        let receiver = Arc::clone(&self.receiver);
-        let mempool = Arc::clone(&self.mempool);
-        let peer_addr = self.peer_addr.clone();
-        tokio::spawn(async move {
-            loop {
-                let mut rx_guard = receiver.write().await;
-                let tx = match rx_guard.recv().await {
-                    Ok(tx) => tx,
-                    Err(e) => {
-                        error!(peer=%peer_addr, error=?e, "Error receiving transaction");
-                        break;
-                    }
-                };
-
-                Self::add_tx(&mempool, tx.clone()).await;
+    pub async fn discover_peers(
+        &mut self,
+        desired_peers: u8,
+    ) -> Result<Vec<PeerAddress>, PeerError> {
+        let mut client_guard = self.peer_sharing_client.lock().await;
+        let peer_sharing_client = match client_guard.as_mut() {
+            Some(c) => c,
+            None => {
+                return Err(PeerError::PeerDiscovery(
+                    "Peer sharing client not available".to_string(),
+                ));
             }
-        });
+        };
+
+        peer_sharing_client
+            .send_share_request(desired_peers)
+            .await
+            .map_err(|e| {
+                PeerError::PeerDiscovery(format!("Failed to send share request: {:?}", e))
+            })?;
+
+        let mut discovered = vec![];
+        if let Ok(peers) = peer_sharing_client
+            .recv_peer_addresses()
+            .await
+            .map_err(|e| {
+                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {:?}", e))
+            })
+        {
+            discovered.extend(peers);
+        }
+
+        Ok(discovered)
+    }
+
+    pub async fn query_peer_sharing_mode(&self) -> Result<bool, PeerError> {
+        let version_table = PeerClient::handshake_query(&self.peer_addr, self.network_magic)
+            .await
+            .map_err(|e| {
+                PeerError::Initialization(format!("Failed to query peer sharing mode: {:?}", e))
+            })?;
+
+        let version_data = version_table
+            .values
+            .iter()
+            .max_by_key(|(version, _)| *version)
+            .map(|(_, data)| data);
+
+        if let Some(data) = version_data {
+            if Some(1) == data.peer_sharing {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     fn start_background_task(&self) {
@@ -106,6 +156,7 @@ impl Peer {
         let mempool_arc = Arc::clone(&self.mempool);
         let unfulfilled_request_arc = Arc::clone(&self.unfulfilled_request);
         let peer_addr = self.peer_addr.clone();
+        let receiver = Arc::clone(&self.receiver);
 
         task::spawn(async move {
             loop {
@@ -120,6 +171,7 @@ impl Peer {
                         &mempool_arc,
                         &tx_submit_client,
                         &unfulfilled_request_arc,
+                        &receiver,
                     )
                     .await
                     {
@@ -173,6 +225,7 @@ impl Peer {
                             ack as usize,
                             req as usize,
                             &unfulfilled_request_arc,
+                            &receiver,
                         )
                         .await
                         .ok();
@@ -182,7 +235,26 @@ impl Peer {
                         let mempool_guard = mempool_arc.lock().await;
                         mempool_guard.acknowledge(ack as usize);
 
-                        let txs = mempool_guard.request(req as usize);
+                        let mut txs = vec![];
+                        let mut recv = receiver.write().await;
+
+                        for _ in 0..req {
+                            match recv.try_recv() {
+                                Ok(tx_data) => {
+                                    if let Ok(hash) = mempool_guard.receive_raw(&tx_data) {
+                                        if let Some(tx) = mempool_guard.find_inflight(&hash) {
+                                            txs.push(tx);
+                                        }
+                                    }
+                                }
+                                Err(TryRecvError::Closed) => {
+                                    error!(peer=%peer_addr, "Channel closed; breaking");
+                                }
+                                Err(_) => {
+                                    error!(peer=%peer_addr, "Channel lagged; breaking");
+                                }
+                            }
+                        }
                         drop(mempool_guard);
 
                         let mut client_guard = tx_submit_client.lock().await;
@@ -235,24 +307,40 @@ impl Peer {
         });
     }
 
-    pub async fn add_tx(mempool: &Arc<Mutex<Mempool>>, tx: Vec<u8>) {
-        let mempool = mempool.lock().await;
-        mempool.receive_raw(&tx).unwrap();
-    }
-
     async fn process_unfulfilled(
         request: usize,
         peer_addr: &str,
         mempool: &Arc<Mutex<Mempool>>,
         tx_submit_client: &Arc<Mutex<Option<TxSubmitClient>>>,
         unfulfilled_request: &Arc<RwLock<Option<usize>>>,
+        receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
     ) -> Result<(), PeerError> {
-        let available = {
-            let mempool_guard = mempool.lock().await;
-            mempool_guard.pending_total()
-        };
+        let mut txs = vec![];
+        let mut recv = receiver.write().await;
 
-        if available > 0 {
+        for _ in 0..request {
+            match recv.try_recv() {
+                Ok(tx_data) => {
+                    let mempool = mempool.lock().await;
+                    if let Ok(hash) = mempool.receive_raw(&tx_data) {
+                        if let Some(tx) = mempool.find_inflight(&hash) {
+                            txs.push(tx);
+                        }
+                    }
+                }
+                Err(TryRecvError::Empty) => {
+                    break;
+                }
+                Err(e) => {
+                    return Err(PeerError::TxSubmission(format!(
+                        "Error receiving from broadcast: {:?}",
+                        e
+                    )));
+                }
+            }
+        }
+
+        if !txs.is_empty() {
             let mempool_guard = mempool.lock().await;
             let mut client_guard = tx_submit_client.lock().await;
 
@@ -270,6 +358,7 @@ impl Peer {
                 0,
                 request,
                 unfulfilled_request,
+                receiver,
             )
             .await?;
         } else {
@@ -285,21 +374,47 @@ impl Peer {
         ack: usize,
         req: usize,
         unfulfilled_request: &Arc<RwLock<Option<usize>>>,
+        receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
     ) -> Result<(), PeerError> {
         mempool.acknowledge(ack);
 
-        let available = mempool.pending_total();
-        if available > 0 {
-            let txs = mempool.request(req);
+        let mut txs = vec![];
+        let mut rx_guard = receiver.write().await;
+
+        for _ in 0..req {
+            match rx_guard.try_recv() {
+                Ok(tx_data) => {
+                    // Process the transaction and add to inflight
+                    if let Ok(hash) = mempool.receive_raw(&tx_data) {
+                        // Find the transaction we just added to inflight
+                        if let Some(tx) = mempool.find_inflight(&hash) {
+                            txs.push(tx);
+                        }
+                    }
+                }
+                Err(TryRecvError::Empty) => {
+                    break;
+                }
+                Err(e) => {
+                    return Err(PeerError::TxSubmission(format!(
+                        "Error receiving from broadcast: {:?}",
+                        e
+                    )));
+                }
+            }
+        }
+
+        if !txs.is_empty() {
             Self::propagate_txs(tx_submit_client, txs).await?;
             let mut unfulfilled = unfulfilled_request.write().await;
             *unfulfilled = None;
+            Ok(())
         } else {
+            // If no transactions were available, store the request for later
             let mut unfulfilled = unfulfilled_request.write().await;
             *unfulfilled = Some(req);
+            Ok(())
         }
-
-        Ok(())
     }
 
     async fn propagate_txs(

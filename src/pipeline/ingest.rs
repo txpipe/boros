@@ -1,25 +1,34 @@
 use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
-use tokio::time::sleep;
+use tokio::{sync::broadcast::Sender, time::sleep};
 use tracing::info;
 
+use super::CAP;
 use crate::{
     priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
-use super::CAP;
 
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Vec<Transaction>", worker = "Worker")]
 pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
+    sender: Sender<Vec<u8>>,
 }
 
 impl Stage {
-    pub fn new(storage: Arc<SqliteTransaction>, priority: Arc<Priority>) -> Self {
-        Self { storage, priority }
+    pub fn new(
+        storage: Arc<SqliteTransaction>,
+        priority: Arc<Priority>,
+        sender: Sender<Vec<u8>>,
+    ) -> Self {
+        Self {
+            storage,
+            priority,
+            sender,
+        }
     }
 }
 
@@ -56,14 +65,28 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<(), WorkerError> {
         info!("validating {} transactions", unit.len());
 
-        let transactions = unit
+        let transactions: Vec<_> = unit
             .iter()
             .map(|tx| {
                 let mut tx = tx.clone();
                 tx.status = TransactionStatus::Validated;
+
                 tx
             })
             .collect();
+
+        for tx in transactions.iter() {
+            let receiver_count = stage.sender.receiver_count();
+            if receiver_count > 0 {
+                let broadcast_result = stage.sender.send(tx.raw.clone());
+                match broadcast_result {
+                    Ok(n) => info!("Transaction {} broadcasted to {} receivers", tx.id, n),
+                    Err(e) => info!("Failed to broadcast transaction: {}", e),
+                }
+            } else {
+                info!("No receivers available for broadcasting");
+            }
+        }
 
         stage.storage.update_batch(&transactions).await.or_retry()?;
 

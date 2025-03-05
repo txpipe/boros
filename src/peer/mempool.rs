@@ -30,7 +30,6 @@ pub struct Tx {
 
 #[derive(Clone)]
 pub enum TxStage {
-    Pending,
     Inflight,
     Acknowledged,
 }
@@ -45,7 +44,6 @@ pub struct Event {
 
 #[derive(Default)]
 struct MempoolState {
-    pending: Vec<Tx>,
     inflight: Vec<Tx>,
     acknowledged: HashMap<TxHash, Tx>,
 }
@@ -74,11 +72,10 @@ impl Mempool {
     fn receive(&self, tx: Tx) {
         let mut state = self.mempool.write().unwrap();
 
-        state.pending.push(tx.clone());
-        self.notify(TxStage::Pending, tx);
+        state.inflight.push(tx.clone());
+        self.notify(TxStage::Inflight, tx);
 
         debug!(
-            pending = state.pending.len(),
             inflight = state.inflight.len(),
             acknowledged = state.acknowledged.len(),
             "mempool state changed"
@@ -103,31 +100,6 @@ impl Mempool {
         Ok(hash)
     }
 
-    pub fn request(&self, desired: usize) -> Vec<Tx> {
-        let available = self.pending_total();
-        self.request_exact(std::cmp::min(desired, available))
-    }
-
-    pub fn request_exact(&self, count: usize) -> Vec<Tx> {
-        let mut state = self.mempool.write().unwrap();
-
-        let selected = state.pending.drain(..count).collect_vec();
-
-        for tx in selected.iter() {
-            state.inflight.push(tx.clone());
-            self.notify(TxStage::Inflight, tx.clone());
-        }
-
-        debug!(
-            pending = state.pending.len(),
-            inflight = state.inflight.len(),
-            acknowledged = state.acknowledged.len(),
-            "mempool state changed"
-        );
-
-        selected
-    }
-
     pub fn acknowledge(&self, count: usize) {
         debug!(n = count, "acknowledging txs");
 
@@ -141,7 +113,6 @@ impl Mempool {
         }
 
         debug!(
-            pending = state.pending.len(),
             inflight = state.inflight.len(),
             acknowledged = state.acknowledged.len(),
             "mempool state changed"
@@ -151,10 +122,5 @@ impl Mempool {
     pub fn find_inflight(&self, tx_hash: &TxHash) -> Option<Tx> {
         let state = self.mempool.read().unwrap();
         state.inflight.iter().find(|x| x.hash.eq(tx_hash)).cloned()
-    }
-
-    pub fn pending_total(&self) -> usize {
-        let state = self.mempool.read().unwrap();
-        state.pending.len()
     }
 }

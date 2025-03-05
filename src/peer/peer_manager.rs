@@ -3,8 +3,9 @@ use std::time::Duration;
 
 use pallas::network::miniprotocols::peersharing::PeerAddress;
 use rand::seq::{IndexedMutRandom, IndexedRandom};
+use serde::Deserialize;
 use thiserror::Error;
-use tokio::sync::RwLock;
+use tokio::sync::{broadcast::Receiver, RwLock};
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 
@@ -22,10 +23,15 @@ pub enum PeerManagerError {
 pub struct PeerManager {
     network_magic: u64,
     peers: RwLock<HashMap<String, Option<Peer>>>,
+    receiver: Receiver<Vec<u8>>,
 }
 
 impl PeerManager {
-    pub fn new(network_magic: u64, peer_addresses: Vec<String>) -> Self {
+    pub fn new(
+        network_magic: u64,
+        peer_addresses: Vec<String>,
+        receiver: Receiver<Vec<u8>>,
+    ) -> Self {
         let peers = peer_addresses
             .into_iter()
             .map(|peer_addr| (peer_addr, None))
@@ -34,13 +40,15 @@ impl PeerManager {
         Self {
             network_magic,
             peers: RwLock::new(peers),
+            receiver,
         }
     }
 
-    pub async fn init(&mut self) -> Result<(), PeerManagerError> {
+    pub async fn init(&self) -> Result<(), PeerManagerError> {
         let mut peers = self.peers.write().await;
         for (peer_addr, peer) in peers.iter_mut() {
-            let mut new_peer = Peer::new(peer_addr, self.network_magic);
+            let mut new_peer =
+                Peer::new(peer_addr, self.network_magic, self.receiver.resubscribe());
 
             new_peer.is_peer_sharing_enabled = new_peer
                 .query_peer_sharing_mode()
@@ -51,7 +59,7 @@ impl PeerManager {
                 .init()
                 .await
                 .map_err(PeerManagerError::PeerInitialization)?;
-            
+
             *peer = Some(new_peer);
         }
 
@@ -108,7 +116,7 @@ impl PeerManager {
             return;
         }
 
-        let mut new_peer = Peer::new(peer_addr, self.network_magic);
+        let mut new_peer = Peer::new(peer_addr, self.network_magic, self.receiver.resubscribe());
         let timeout_duration = Duration::from_secs(5);
 
         match timeout(timeout_duration, new_peer.init()).await {
@@ -137,13 +145,11 @@ impl PeerManager {
             })
             .count()
     }
+}
 
-    pub async fn add_tx(&self, tx: Vec<u8>) {
-        let peers = self.peers.read().await;
-        for (_, peer) in peers.iter() {
-            if let Some(peer) = peer {
-                peer.add_tx(tx.clone()).await;
-            }
-        }
-    }
+#[derive(Deserialize, Clone)]
+pub struct PeerManagerConfig {
+    pub peers: Vec<String>,
+    pub desired_peer_count: u8,
+    pub peers_per_request: u8,
 }

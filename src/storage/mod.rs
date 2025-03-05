@@ -28,8 +28,8 @@ impl Transaction {
         Self {
             id,
             raw,
-            //status: TransactionStatus::Pending,
-            status: TransactionStatus::Validated,
+            status: TransactionStatus::Pending,
+            // status: TransactionStatus::Validated,
             queue: DEFAULT_QUEUE.into(),
             slot: None,
             dependencies: None,
