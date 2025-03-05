@@ -6,7 +6,7 @@ sidebar:
 
 With the Priority module, Boros allows users to configure queues to prioritise transactions. Each queue has a weight that Boros uses to calculate how many slots of the quota a queue can use. For transactions where there's no queue, a default queue is set. When a queue is removed from the file and Boros still has transactions pending for the queue removed, Boros uses the default queue weight to process unknown queues.
 
-Follow the [configuration](../configuration) to configure the priority queues.
+Follow the [configuration](./configuration) to configure the priority queues.
 
 ### Example
 Two queues are configured: Queue A with a weight of 3 and Queue B with a weight of 2. Since Queue A has a higher weight, it receives more slots than Queue B. Specifically, the total available slots are distributed proportionally based on weight, giving Queue A 60% of the slots and Queue B 40%. This ensures that Queue A has higher priority when distributing transactions.
