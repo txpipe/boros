@@ -102,25 +102,27 @@ impl Peer {
             }
         };
 
+        if !peer_sharing_client.has_agency() {
+            info!(peer = %self.peer_addr, "Agency not available; disabling peer sharing");
+            self.is_peer_sharing_enabled = false;
+            return Ok(vec![]);
+        }
+
         peer_sharing_client
             .send_share_request(desired_peers)
             .await
             .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to send share request: {:?}", e))
+                PeerError::PeerDiscovery(format!("Failed to send share request: {e:?}"))
             })?;
 
-        let mut discovered = vec![];
-        if let Ok(peers) = peer_sharing_client
+        let discovered_peers = peer_sharing_client
             .recv_peer_addresses()
             .await
             .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {:?}", e))
-            })
-        {
-            discovered.extend(peers);
-        }
+                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {e:?}"))
+            })?;
 
-        Ok(discovered)
+        Ok(discovered_peers)
     }
 
     pub async fn query_peer_sharing_mode(&self) -> Result<bool, PeerError> {
@@ -130,19 +132,12 @@ impl Peer {
                 PeerError::Initialization(format!("Failed to query peer sharing mode: {:?}", e))
             })?;
 
-        let version_data = version_table
+        Ok(version_table
             .values
             .iter()
             .max_by_key(|(version, _)| *version)
-            .map(|(_, data)| data);
-
-        if let Some(data) = version_data {
-            if Some(1) == data.peer_sharing {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
+            .map(|(_, data)| data.peer_sharing == Some(1))
+            .unwrap_or(false))
     }
 
     fn start_background_task(&self) {
@@ -292,36 +287,29 @@ impl Peer {
         tx_submit_client: &Arc<Mutex<Option<TxSubmitClient>>>,
         unfulfilled_request: &Arc<RwLock<Option<usize>>>,
     ) -> Result<(), PeerError> {
-        let available = {
-            let mempool_guard = mempool.lock().await;
-            mempool_guard.pending_total()
-        };
+        let available = mempool.lock().await.pending_total();
 
-        if available > 0 {
-            let mempool_guard = mempool.lock().await;
-            let mut client_guard = tx_submit_client.lock().await;
-
-            let tx_submit_client_ref = match client_guard.as_mut() {
-                Some(c) => c,
-                None => {
-                    error!(peer=%peer_addr, "No client available; breaking");
-                    return Err(PeerError::TxSubmission("No client available".to_string()));
-                }
-            };
-
-            Self::reply_txs(
-                &mempool_guard,
-                tx_submit_client_ref,
-                0,
-                request,
-                unfulfilled_request,
-            )
-            .await?;
-        } else {
+        if available == 0 {
             tokio::time::sleep(Duration::from_secs(10)).await;
+            return Ok(());
         }
 
-        Ok(())
+        let mempool_guard = mempool.lock().await;
+        let mut client_guard = tx_submit_client.lock().await;
+
+        let tx_submit_client_ref = client_guard.as_mut().ok_or_else(|| {
+            error!(peer=%peer_addr, "No TxSubmitClient available");
+            PeerError::TxSubmission("No client available".into())
+        })?;
+
+        Self::reply_txs(
+            &mempool_guard,
+            tx_submit_client_ref,
+            0,
+            request,
+            unfulfilled_request,
+        )
+        .await
     }
 
     async fn reply_txs(
