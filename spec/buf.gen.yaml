@@ -1,0 +1,39 @@
+version: v2
+
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/bufbuild/buf-tour/gen
+
+plugins:
+  - local: protoc-gen-prost
+    out: gen/rust/src
+    opt:
+      - bytes=.
+      - compile_well_known_types
+      - file_descriptor_set
+      - extern_path=.google.protobuf=::pbjson_types
+
+  - local: protoc-gen-prost-serde
+    out: gen/rust/src
+
+  - local: protoc-gen-prost-crate
+    out: gen/rust
+    opt:
+      - gen_crate=gen/rust/Cargo.toml
+      - no_features
+    strategy: all
+
+  - local: protoc-gen-tonic
+    out: gen/rust/src
+    opt:
+      - compile_well_known_types
+      - extern_path=.google.protobuf=::pbjson_types
+
+  - remote: buf.build/community/pseudomuto-doc
+    out: gen/docs
+    opt: markdown,docs.md
+
+inputs:
+  - directory: proto
