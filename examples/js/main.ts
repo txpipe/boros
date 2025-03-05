@@ -6,8 +6,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const provider = new Blockfrost({
-    network:"cardano-preview",
-    projectId: process.env.BLOCKFROST_PROJECT_ID as string
+  network: "cardano-preview",
+  projectId: process.env.BLOCKFROST_PROJECT_ID as string
 });
 
 const mnemonic =
@@ -45,4 +45,6 @@ const signexTx = await blaze.signTransaction(tx);
 const base64 = Buffer.from(signexTx.toCbor(), "hex").toString("base64");
 
 // log the grpcurl command string with the base64 string
-console.log('Execute this command:\n',`\tgrpcurl -plaintext -d '{"tx": [{"raw": "${base64}"}]}' localhost:50052 utxorpc.v1alpha.submit.SubmitService.SubmitTx`);
+//console.log('Execute this command:\n',`\tgrpcurl -plaintext -d '{"tx": [{"raw": "${base64}"}]}' localhost:50052 utxorpc.v1alpha.submit.SubmitService.SubmitTx`);
+console.log('Execute this command:\n', `\tgrpcurl -plaintext -d '{"tx": [{"raw": "${base64}"}]}' localhost:50052 boros.v1.submit.SubmitService.SubmitTx`);
+
