@@ -115,7 +115,7 @@
 | Method Name | Request Type | Response Type | Description |
 | ----------- | ------------ | ------------- | ------------|
 | SubmitTx | [SubmitTxRequest](#boros-v1-submit-SubmitTxRequest) | [SubmitTxResponse](#boros-v1-submit-SubmitTxResponse) |  |
-| LockState | [LockStateRequest](#boros-v1-submit-LockStateRequest) | [LockStateResponse](#boros-v1-submit-LockStateResponse) |  |
+| LockState | [LockStateRequest](#boros-v1-submit-LockStateRequest) | [LockStateResponse](#boros-v1-submit-LockStateResponse) stream |  |
 
  
 
