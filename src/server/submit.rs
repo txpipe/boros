@@ -61,7 +61,7 @@ impl SubmitService for SubmitServiceImpl {
                         .is_valid_token(&queue, &tx.lock_token.unwrap_or_default())
                         .await
                     {
-                        return Err(Status::permission_denied(format!("invalid lock token")));
+                        return Err(Status::permission_denied("invalid lock token"));
                     }
                 }
 
@@ -82,7 +82,7 @@ impl SubmitService for SubmitServiceImpl {
         for queue in chained_queues {
             self.tx_chaining.unlock(&queue).await.map_err(|error| {
                 error!(?error);
-                Status::internal(format!("internal error"))
+                Status::internal("internal error")
             })?;
         }
 
@@ -95,15 +95,14 @@ impl SubmitService for SubmitServiceImpl {
         request: tonic::Request<LockStateRequest>,
     ) -> std::result::Result<tonic::Response<Self::LockStateStream>, tonic::Status> {
         let lock_state_request = request.into_inner();
-        let queue = lock_state_request.queue.clone();
 
-        if !self.tx_chaining.is_chained_queue(&queue) {
+        if !self.tx_chaining.is_chained_queue(&lock_state_request.queue) {
             return Err(Status::invalid_argument("queue is not chained"));
         }
 
         let (tx_stream, rx_stream) = mpsc::channel(1);
         self.tx_chaining
-            .lock(&queue, tx_stream, lock_state_request)
+            .lock(tx_stream, lock_state_request)
             .await
             .map_err(|error| {
                 error!(?error);

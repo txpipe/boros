@@ -47,7 +47,7 @@
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | lock_token | [string](#string) |  |  |
-| cbor | [string](#string) |  | TODO: use u5c transaction |
+| cbor | [bytes](#bytes) | optional | TODO: use u5c transaction |
 
 
 
@@ -92,7 +92,7 @@
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| raw | [bytes](#bytes) |  | Raw transaction data. |
+| raw | [bytes](#bytes) |  |  |
 | queue | [string](#string) | optional |  |
 | lock_token | [string](#string) | optional |  |
 

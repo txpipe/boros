@@ -20,9 +20,12 @@ use super::Config;
 
 const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
-//TODO: change tonic to local struct
+//TODO: change tonic struct to agnostic local struct
+
+type LockEvent = Sender<(Sender<Result<LockStateResponse, Status>>, LockStateRequest)>;
+
 pub struct TxChaining {
-    tx_lock: HashMap<String, Sender<(Sender<Result<LockStateResponse, Status>>, LockStateRequest)>>,
+    tx_lock: HashMap<String, LockEvent>,
     tx_unlock: HashMap<String, Sender<bool>>,
     state: Arc<RwLock<HashMap<String, String>>>,
 }
@@ -51,12 +54,12 @@ impl TxChaining {
             tokio::spawn(async move {
                 let queue = queue_cloned;
                 let state = state_cloned;
-                let _tx_storage = tx_storage_cloned;
+                let tx_storage = tx_storage_cloned;
 
                 while let Some((tx, _req)) = rx_lock.recv().await {
                     let token: String = rand::rng()
                         .sample_iter(&Alphanumeric)
-                        .take(7)
+                        .take(8)
                         .map(char::from)
                         .collect();
 
@@ -67,26 +70,35 @@ impl TxChaining {
                         .and_modify(|v| *v = token.clone())
                         .or_insert(token.clone());
 
+                    let latest_transaction = tx_storage.latest(&queue).await;
+                    if let Err(error) = latest_transaction {
+                        error!(?error);
+                        let _ = tx
+                            .send(Result::<_, Status>::Err(Status::internal("internal error")))
+                            .await;
+                        drop(tx);
+                        continue;
+                    }
+                    let cbor = latest_transaction.unwrap().map(|t| t.raw);
+
                     if let Err(error) = tx
                         .send(Result::<_, Status>::Ok(LockStateResponse {
                             lock_token: token,
-                            cbor: "tx cbor".into(),
+                            cbor: cbor.map(|c| c.into()),
                         }))
                         .await
                     {
                         error!(?error);
+                        drop(tx);
                         continue;
                     }
 
                     drop(tx);
-
                     tokio::select! {
                         _ = rx_unlock.recv() => {
-                            dbg!("unlock");
                             state.write().await.remove(&queue);
                         }
                         _ = tokio::time::sleep(LOCK_TIMEOUT) => {
-                            dbg!("timeout");
                             state.write().await.remove(&queue);
                         },
                     }
@@ -106,11 +118,10 @@ impl TxChaining {
 
     pub async fn lock(
         &self,
-        queue: &str,
         tx_response: Sender<Result<LockStateResponse, Status>>,
         request: LockStateRequest,
     ) -> anyhow::Result<()> {
-        let Some(tx) = self.tx_lock.get(queue) else {
+        let Some(tx) = self.tx_lock.get(&request.queue) else {
             bail!("Invalid queue")
         };
 
@@ -130,7 +141,7 @@ impl TxChaining {
     }
 
     pub fn is_chained_queue(&self, queue: &str) -> bool {
-        self.tx_lock.get(queue).is_some()
+        self.tx_lock.contains_key(queue)
     }
 
     pub async fn is_valid_token(&self, queue: &str, token: &str) -> bool {
@@ -138,5 +149,268 @@ impl TxChaining {
             return current_token.eq(token);
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod chaining_tests {
+    use std::{collections::HashSet, sync::Arc};
+
+    use chrono::Utc;
+    use spec::boros::v1::submit::LockStateRequest;
+    use tokio::sync::mpsc;
+
+    use crate::{
+        queue::{
+            chaining::{TxChaining, LOCK_TIMEOUT},
+            Config,
+        },
+        storage::sqlite::sqlite_utils_tests::mock_sqlite_transaction,
+    };
+
+    #[tokio::test]
+    async fn it_should_lock_queue() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![Config {
+            name: "banana".into(),
+            weight: 1,
+            chained: true,
+        }]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let (tx_stream, mut rx_stream) = mpsc::channel(1);
+
+        chaining
+            .lock(
+                tx_stream,
+                LockStateRequest {
+                    queue: "banana".into(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let result = rx_stream.recv().await;
+
+        assert!(result.is_some());
+        assert!(result.unwrap().is_ok());
+    }
+
+    #[tokio::test]
+    async fn it_should_wait_timeout_to_lock_queue() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![Config {
+            name: "banana".into(),
+            weight: 1,
+            chained: true,
+        }]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let (tx_stream, _rx_stream) = mpsc::channel(1);
+
+        let time_now = Utc::now();
+
+        chaining
+            .lock(
+                tx_stream,
+                LockStateRequest {
+                    queue: "banana".into(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let (tx_stream, mut rx_stream) = mpsc::channel(1);
+        chaining
+            .lock(
+                tx_stream,
+                LockStateRequest {
+                    queue: "banana".into(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let result = rx_stream.recv().await;
+        assert!(result.is_some());
+        assert!(result.unwrap().is_ok());
+
+        let diff = Utc::now().signed_duration_since(time_now).num_seconds() as u64;
+
+        assert!(diff == LOCK_TIMEOUT.as_secs())
+    }
+
+    #[tokio::test]
+    async fn it_should_lock_many_queue() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![
+            Config {
+                name: "banana".into(),
+                weight: 1,
+                chained: true,
+            },
+            Config {
+                name: "orange".into(),
+                weight: 1,
+                chained: true,
+            },
+        ]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let time_now = Utc::now();
+
+        let (tx_stream, mut rx_stream) = mpsc::channel(1);
+        chaining
+            .lock(
+                tx_stream,
+                LockStateRequest {
+                    queue: "banana".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let result = rx_stream.recv().await;
+        assert!(result.is_some());
+        assert!(result.unwrap().is_ok());
+
+        let (tx_stream, mut rx_stream) = mpsc::channel(1);
+        chaining
+            .lock(
+                tx_stream,
+                LockStateRequest {
+                    queue: "orange".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let result = rx_stream.recv().await;
+        assert!(result.is_some());
+        assert!(result.unwrap().is_ok());
+
+        let diff = Utc::now().signed_duration_since(time_now).num_seconds() as u64;
+        assert!(diff < LOCK_TIMEOUT.as_secs())
+    }
+
+    #[tokio::test]
+    async fn it_should_unlock_queue() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![Config {
+            name: "banana".into(),
+            weight: 1,
+            chained: true,
+        }]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let time_now = Utc::now();
+
+        let (tx_stream, mut rx_stream) = mpsc::channel(1);
+        let request = LockStateRequest {
+            queue: "banana".into(),
+        };
+        chaining
+            .lock(tx_stream.clone(), request.clone())
+            .await
+            .unwrap();
+        rx_stream.recv().await;
+
+        chaining.unlock("banana").await.unwrap();
+
+        chaining.lock(tx_stream.clone(), request).await.unwrap();
+        let result = rx_stream.recv().await;
+        assert!(result.is_some());
+        assert!(result.unwrap().is_ok());
+
+        let diff = Utc::now().signed_duration_since(time_now).num_seconds() as u64;
+        assert!(diff < LOCK_TIMEOUT.as_secs())
+    }
+
+    #[tokio::test]
+    async fn it_should_return_chained_queue() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![Config {
+            name: "banana".into(),
+            weight: 1,
+            chained: true,
+        }]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let result = chaining.is_chained_queue("banana");
+        assert!(result);
+    }
+
+    #[tokio::test]
+    async fn it_should_return_not_chained_queue() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![Config {
+            name: "banana".into(),
+            weight: 1,
+            chained: false,
+        }]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let result = chaining.is_chained_queue("banana");
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn it_should_return_token_valid() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![Config {
+            name: "banana".into(),
+            weight: 1,
+            chained: true,
+        }]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let (tx_stream, mut rx_stream) = mpsc::channel(1);
+        chaining
+            .lock(
+                tx_stream,
+                LockStateRequest {
+                    queue: "banana".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let result = rx_stream.recv().await;
+        assert!(result.is_some());
+        assert!(result.as_ref().unwrap().is_ok());
+
+        let lock_state = result.unwrap().unwrap();
+
+        let result = chaining
+            .is_valid_token("banana", &lock_state.lock_token)
+            .await;
+        assert!(result);
+    }
+
+    #[tokio::test]
+    async fn it_should_return_token_invalid() {
+        let storage = Arc::new(mock_sqlite_transaction().await);
+
+        let queues = HashSet::from_iter(vec![Config {
+            name: "banana".into(),
+            weight: 1,
+            chained: true,
+        }]);
+
+        let chaining = TxChaining::new(Arc::clone(&storage), queues);
+
+        let result = chaining.is_valid_token("banana", "invalid").await;
+        assert!(!result);
     }
 }
