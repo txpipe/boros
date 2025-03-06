@@ -7,7 +7,7 @@ use crate::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
         u5c::{Point, U5cDataAdapterImpl},
     },
-    priority::Priority,
+    queue::priority::Priority,
     storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
