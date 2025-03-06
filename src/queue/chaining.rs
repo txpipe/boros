@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{bail, ensure};
+use anyhow::bail;
 use rand::{distr::Alphanumeric, Rng};
 use spec::boros::v1::submit::{LockStateRequest, LockStateResponse};
 use tokio::sync::{
@@ -119,17 +119,24 @@ impl TxChaining {
         Ok(())
     }
 
-    pub async fn unlock(&self, queue: &str, token: &str) -> anyhow::Result<()> {
+    pub async fn unlock(&self, queue: &str) -> anyhow::Result<()> {
         let Some(tx) = self.tx_unlock.get(queue) else {
             bail!("invalid queue")
         };
 
-        if let Some(current_token) = self.state.read().await.get(queue) {
-            ensure!(current_token.eq(token), "invalid queue token");
-        }
-
         tx.send(true).await?;
 
         Ok(())
+    }
+
+    pub fn is_chained_queue(&self, queue: &str) -> bool {
+        self.tx_lock.get(queue).is_some()
+    }
+
+    pub async fn is_valid_token(&self, queue: &str, token: &str) -> bool {
+        if let Some(current_token) = self.state.read().await.get(queue) {
+            return current_token.eq(token);
+        }
+        false
     }
 }

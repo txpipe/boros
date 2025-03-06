@@ -37,8 +37,9 @@ impl SubmitService for SubmitServiceImpl {
     ) -> std::result::Result<tonic::Response<SubmitTxResponse>, tonic::Status> {
         let message = request.into_inner();
 
-        let mut txs: Vec<Transaction> = Vec::default();
+        let mut txs: Vec<Transaction> = Vec::new();
         let mut hashes = vec![];
+        let mut chained_queues = Vec::new();
 
         for (idx, tx) in message.tx.into_iter().enumerate() {
             let hash = MultiEraTx::decode(&tx.raw)
@@ -51,21 +52,19 @@ impl SubmitService for SubmitServiceImpl {
             hashes.push(hash.to_vec().into());
             let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());
 
-            // TODO: validate if the queue has the lock mechanism activated, if yes, validate the
-            // token sent.
             if let Some(queue) = tx.queue {
-                // TODO: validate  if the queue need to validate the tx_chaining
-                //       move the unlock to injest later
-                self.tx_chaining
-                    .unlock(&queue, &tx.lock_token.unwrap_or_default())
-                    .await
-                    .map_err(|error| {
-                        error!(?error);
-                        Status::permission_denied(format!("invalid lock token"))
-                    })?;
+                if self.tx_chaining.is_chained_queue(&queue) {
+                    chained_queues.push(queue.clone());
 
-                // TODO: validate if the queue is configured
-                //       if not, the transaction goes to the default queue
+                    if !self
+                        .tx_chaining
+                        .is_valid_token(&queue, &tx.lock_token.unwrap_or_default())
+                        .await
+                    {
+                        return Err(Status::permission_denied(format!("invalid lock token")));
+                    }
+                }
+
                 tx_storage.queue = queue;
             }
 
@@ -80,6 +79,13 @@ impl SubmitService for SubmitServiceImpl {
             Status::internal("internal error")
         })?;
 
+        for queue in chained_queues {
+            self.tx_chaining.unlock(&queue).await.map_err(|error| {
+                error!(?error);
+                Status::internal(format!("internal error"))
+            })?;
+        }
+
         Ok(Response::new(SubmitTxResponse { r#ref: hashes }))
     }
 
@@ -90,6 +96,10 @@ impl SubmitService for SubmitServiceImpl {
     ) -> std::result::Result<tonic::Response<Self::LockStateStream>, tonic::Status> {
         let lock_state_request = request.into_inner();
         let queue = lock_state_request.queue.clone();
+
+        if !self.tx_chaining.is_chained_queue(&queue) {
+            return Err(Status::invalid_argument("queue is not chained"));
+        }
 
         let (tx_stream, rx_stream) = mpsc::channel(1);
         self.tx_chaining
