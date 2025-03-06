@@ -43,7 +43,6 @@ pub struct Peer {
     tx_submit_client: Arc<Mutex<Option<TxSubmitClient>>>,
     peer_sharing_client: Arc<Mutex<Option<PeerSharingClient>>>,
     network_magic: u64,
-    unfulfilled_request: Arc<RwLock<Option<usize>>>,
     receiver: Arc<RwLock<Receiver<Vec<u8>>>>,
     pub peer_addr: String,
     pub is_peer_sharing_enabled: bool,
@@ -59,7 +58,6 @@ impl Peer {
             peer_sharing_client: Arc::new(Mutex::new(None)),
             peer_addr: peer_addr.to_string(),
             network_magic,
-            unfulfilled_request: Arc::new(RwLock::new(None)),
             receiver: Arc::new(RwLock::new(receiver)),
             is_peer_sharing_enabled: false,
             is_alive: false,
@@ -154,35 +152,12 @@ impl Peer {
         let plexer_client = Arc::clone(&self.plexer_client);
         let tx_submit_client = Arc::clone(&self.tx_submit_client);
         let mempool_arc = Arc::clone(&self.mempool);
-        let unfulfilled_request_arc = Arc::clone(&self.unfulfilled_request);
         let peer_addr = self.peer_addr.clone();
         let receiver = Arc::clone(&self.receiver);
 
         task::spawn(async move {
             loop {
-                // Check if there's any unfulfilled requests
-                let outstanding_request = *unfulfilled_request_arc.read().await;
-
-                // if there is an unfulfilled request, process it
-                if let Some(request) = outstanding_request {
-                    if let Err(err) = Self::process_unfulfilled(
-                        request,
-                        &peer_addr,
-                        &mempool_arc,
-                        &tx_submit_client,
-                        &unfulfilled_request_arc,
-                        &receiver,
-                    )
-                    .await
-                    {
-                        error!(peer=%peer_addr, error=?err, "Error processing unfulfilled request");
-                        break;
-                    }
-
-                    continue;
-                }
-
-                // Otherwise, wait for the next request
+                // Wait for the next request
                 let next_req = {
                     let mut client_guard = tx_submit_client.lock().await;
                     let tx_submit_client_ref = match client_guard.as_mut() {
@@ -219,12 +194,11 @@ impl Peer {
                             }
                         };
 
-                        if let Err(e) = Self::reply_txs(
+                        if let Err(e) = Self::reply_txs_blocking(
                             &mempool_guard,
                             tx_submit_client_ref,
                             ack as usize,
                             req as usize,
-                            &unfulfilled_request_arc,
                             &receiver,
                         )
                         .await
@@ -301,68 +275,27 @@ impl Peer {
         });
     }
 
-    async fn process_unfulfilled(
-        request: usize,
-        peer_addr: &str,
-        mempool: &Arc<Mutex<Mempool>>,
-        tx_submit_client: &Arc<Mutex<Option<TxSubmitClient>>>,
-        unfulfilled_request: &Arc<RwLock<Option<usize>>>,
-        receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
-    ) -> Result<(), PeerError> {
-        let txs = {
-            let mempool_guard = mempool.lock().await;
-            let result = Self::collect_transactions(&mempool_guard, receiver, request).await?;
-            result
-        };
-
-        if !txs.is_empty() {
-            {
-                let mempool_guard = mempool.lock().await;
-                mempool_guard.acknowledge(0);
-            }
-
-            let mut client_guard = tx_submit_client.lock().await;
-            let tx_submit_client_ref = match client_guard.as_mut() {
-                Some(c) => c,
-                None => {
-                    error!(peer=%peer_addr, "No client available");
-                    return Err(PeerError::TxSubmission("No client available".to_string()));
-                }
-            };
-
-            Self::propagate_txs(tx_submit_client_ref, txs).await?;
-
-            let mut unfulfilled = unfulfilled_request.write().await;
-            *unfulfilled = None;
-        } else {
-            tokio::time::sleep(Duration::from_secs(10)).await;
-        }
-
-        Ok(())
-    }
-
-    async fn reply_txs(
+    async fn reply_txs_blocking(
         mempool: &Mempool,
         tx_submit_client: &mut TxSubmitClient,
         ack: usize,
         req: usize,
-        unfulfilled_request: &Arc<RwLock<Option<usize>>>,
         receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
     ) -> Result<(), PeerError> {
         mempool.acknowledge(ack);
 
-        let txs = Self::collect_transactions(mempool, receiver, req).await?;
+        let mut txs = Self::collect_transactions(mempool, receiver, req).await?;
 
-        if !txs.is_empty() {
-            Self::propagate_txs(tx_submit_client, txs).await?;
-            let mut unfulfilled = unfulfilled_request.write().await;
-            *unfulfilled = None;
-            Ok(())
-        } else {
-            let mut unfulfilled = unfulfilled_request.write().await;
-            *unfulfilled = Some(req);
-            Ok(())
+        if txs.is_empty() {
+            info!("No transactions available; waiting for at least one");
+
+            while txs.is_empty() {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                txs = Self::collect_transactions(mempool, receiver, req).await?;
+            }
         }
+
+        Self::propagate_txs(tx_submit_client, txs).await
     }
 
     async fn propagate_txs(
@@ -392,16 +325,8 @@ impl Peer {
         for _ in 0..req {
             match rx_guard.try_recv() {
                 Ok(tx_data) => {
-                    let tx = {
-                        match mempool.receive_raw(&tx_data) {
-                            Ok(hash) => mempool.find_inflight(&hash),
-                            Err(_) => None,
-                        }
-                    };
-
-                    if let Some(tx) = tx {
-                        txs.push(tx);
-                    }
+                    let tx = mempool.receive_raw(&tx_data)?;
+                    txs.push(tx);
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(e) => {

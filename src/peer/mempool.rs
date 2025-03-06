@@ -82,7 +82,7 @@ impl Mempool {
         );
     }
 
-    pub fn receive_raw(&self, cbor: &[u8]) -> Result<TxHash, MempoolError> {
+    pub fn receive_raw(&self, cbor: &[u8]) -> Result<Tx, MempoolError> {
         let tx = MultiEraTx::decode(cbor)?;
 
         let hash = tx.hash();
@@ -95,9 +95,9 @@ impl Mempool {
             confirmed: false,
         };
 
-        self.receive(tx);
+        self.receive(tx.clone());
 
-        Ok(hash)
+        Ok(tx)
     }
 
     pub fn acknowledge(&self, count: usize) {
