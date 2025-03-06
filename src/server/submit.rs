@@ -1,22 +1,31 @@
-use std::sync::Arc;
+use std::{pin::Pin, sync::Arc};
 
 use pallas::ledger::traverse::MultiEraTx;
 use spec::boros::v1::submit::{
     submit_service_server::SubmitService, LockStateRequest, LockStateResponse, SubmitTxRequest,
     SubmitTxResponse,
 };
+use tokio::sync::mpsc;
+use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Response, Status};
 use tracing::{error, info};
 
-use crate::storage::{sqlite::SqliteTransaction, Transaction};
+use crate::{
+    queue::chaining::TxChaining,
+    storage::{sqlite::SqliteTransaction, Transaction},
+};
 
 pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
+    tx_chaining: Arc<TxChaining>,
 }
 
 impl SubmitServiceImpl {
-    pub fn new(tx_storage: Arc<SqliteTransaction>) -> Self {
-        Self { tx_storage }
+    pub fn new(tx_storage: Arc<SqliteTransaction>, tx_chaining: Arc<TxChaining>) -> Self {
+        Self {
+            tx_storage,
+            tx_chaining,
+        }
     }
 }
 
@@ -28,8 +37,9 @@ impl SubmitService for SubmitServiceImpl {
     ) -> std::result::Result<tonic::Response<SubmitTxResponse>, tonic::Status> {
         let message = request.into_inner();
 
-        let mut txs: Vec<Transaction> = Vec::default();
+        let mut txs: Vec<Transaction> = Vec::new();
         let mut hashes = vec![];
+        let mut chained_queues = Vec::new();
 
         for (idx, tx) in message.tx.into_iter().enumerate() {
             let hash = MultiEraTx::decode(&tx.raw)
@@ -41,13 +51,23 @@ impl SubmitService for SubmitServiceImpl {
 
             hashes.push(hash.to_vec().into());
             let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());
-            // TODO: validate if the queue has the lock mechanism activated, if yes, validate the
-            // token sent.
+
             if let Some(queue) = tx.queue {
-                // TODO: validate if the queue is configured
-                //       if not, the transaction goes to the default queue
+                if self.tx_chaining.is_chained_queue(&queue) {
+                    chained_queues.push(queue.clone());
+
+                    if !self
+                        .tx_chaining
+                        .is_valid_token(&queue, &tx.lock_token.unwrap_or_default())
+                        .await
+                    {
+                        return Err(Status::permission_denied("invalid lock token"));
+                    }
+                }
+
                 tx_storage.queue = queue;
             }
+
             txs.push(tx_storage)
         }
 
@@ -59,13 +79,39 @@ impl SubmitService for SubmitServiceImpl {
             Status::internal("internal error")
         })?;
 
+        for queue in chained_queues {
+            self.tx_chaining.unlock(&queue).await.map_err(|error| {
+                error!(?error);
+                Status::internal("internal error")
+            })?;
+        }
+
         Ok(Response::new(SubmitTxResponse { r#ref: hashes }))
     }
 
+    type LockStateStream = Pin<Box<dyn Stream<Item = Result<LockStateResponse, Status>> + Send>>;
     async fn lock_state(
         &self,
-        _request: tonic::Request<LockStateRequest>,
-    ) -> std::result::Result<tonic::Response<LockStateResponse>, tonic::Status> {
-        todo!()
+        request: tonic::Request<LockStateRequest>,
+    ) -> std::result::Result<tonic::Response<Self::LockStateStream>, tonic::Status> {
+        let lock_state_request = request.into_inner();
+
+        if !self.tx_chaining.is_chained_queue(&lock_state_request.queue) {
+            return Err(Status::invalid_argument("queue is not chained"));
+        }
+
+        let (tx_stream, rx_stream) = mpsc::channel(1);
+        self.tx_chaining
+            .lock(tx_stream, lock_state_request)
+            .await
+            .map_err(|error| {
+                error!(?error);
+                Status::invalid_argument("invalid queue request")
+            })?;
+
+        let output_stream = ReceiverStream::new(rx_stream);
+        Ok(Response::new(
+            Box::pin(output_stream) as Self::LockStateStream
+        ))
     }
 }

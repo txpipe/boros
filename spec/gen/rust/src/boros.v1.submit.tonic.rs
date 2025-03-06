@@ -116,7 +116,7 @@ pub mod submit_service_client {
             &mut self,
             request: impl tonic::IntoRequest<super::LockStateRequest>,
         ) -> std::result::Result<
-            tonic::Response<super::LockStateResponse>,
+            tonic::Response<tonic::codec::Streaming<super::LockStateResponse>>,
             tonic::Status,
         > {
             self.inner
@@ -135,7 +135,7 @@ pub mod submit_service_client {
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("boros.v1.submit.SubmitService", "LockState"));
-            self.inner.unary(req, path, codec).await
+            self.inner.server_streaming(req, path, codec).await
         }
     }
 }
@@ -154,14 +154,17 @@ pub mod submit_service_server {
             tonic::Response<super::SubmitTxResponse>,
             tonic::Status,
         >;
+        /// Server streaming response type for the LockState method.
+        type LockStateStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<super::LockStateResponse, tonic::Status>,
+            >
+            + Send
+            + 'static;
         ///
         async fn lock_state(
             &self,
             request: tonic::Request<super::LockStateRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::LockStateResponse>,
-            tonic::Status,
-        >;
+        ) -> std::result::Result<tonic::Response<Self::LockStateStream>, tonic::Status>;
     }
     ///
     #[derive(Debug)]
@@ -294,11 +297,12 @@ pub mod submit_service_server {
                     struct LockStateSvc<T: SubmitService>(pub Arc<T>);
                     impl<
                         T: SubmitService,
-                    > tonic::server::UnaryService<super::LockStateRequest>
+                    > tonic::server::ServerStreamingService<super::LockStateRequest>
                     for LockStateSvc<T> {
                         type Response = super::LockStateResponse;
+                        type ResponseStream = T::LockStateStream;
                         type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
+                            tonic::Response<Self::ResponseStream>,
                             tonic::Status,
                         >;
                         fn call(
@@ -330,7 +334,7 @@ pub mod submit_service_server {
                                 max_decoding_message_size,
                                 max_encoding_message_size,
                             );
-                        let res = grpc.unary(method, req).await;
+                        let res = grpc.server_streaming(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)

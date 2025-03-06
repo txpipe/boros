@@ -11,7 +11,7 @@ use tracing::info;
 
 use crate::{
     ledger::{relay::RelayDataAdapter, u5c::U5cDataAdapter},
-    priority::Priority,
+    queue::priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
 

@@ -3,7 +3,7 @@ syntax = "proto3";
 package boros.v1.submit;
 
 message Tx {
-  bytes raw = 1; // Raw transaction data.
+  bytes raw = 1;
   optional string queue = 2;
   optional string lock_token = 3;
 }
@@ -19,11 +19,11 @@ message LockStateRequest {
 }
 message LockStateResponse {
   string lock_token = 1;
-  string cbor = 2; // TODO: use u5c transaction
+  optional bytes cbor = 2; // TODO: use u5c transaction
 }
 
 service SubmitService {
   rpc SubmitTx(SubmitTxRequest) returns (SubmitTxResponse);
-  rpc LockState(LockStateRequest) returns (LockStateResponse);
+  rpc LockState(LockStateRequest) returns (stream LockStateResponse);
 }
 

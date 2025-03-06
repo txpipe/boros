@@ -1,23 +1,19 @@
-use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use itertools::Itertools;
-use serde::Deserialize;
 
 use crate::storage::sqlite::SqliteTransaction;
 use crate::storage::{Transaction, TransactionStatus};
 
-pub const DEFAULT_QUEUE: &str = "default";
-pub const DEFAULT_WEIGHT: u8 = 1;
+use super::{Config, DEFAULT_WEIGHT};
 
 pub struct Priority {
     storage: Arc<SqliteTransaction>,
-    queues: HashSet<QueueConfig>,
+    queues: HashSet<Config>,
 }
 impl Priority {
-    pub fn new(storage: Arc<SqliteTransaction>, queues: HashSet<QueueConfig>) -> Self {
+    pub fn new(storage: Arc<SqliteTransaction>, queues: HashSet<Config>) -> Self {
         Self { storage, queues }
     }
 
@@ -72,46 +68,20 @@ impl Priority {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, Eq)]
-pub struct QueueConfig {
-    pub name: String,
-    pub weight: u8,
-}
-impl Default for QueueConfig {
-    fn default() -> Self {
-        Self {
-            name: DEFAULT_QUEUE.into(),
-            weight: DEFAULT_WEIGHT,
-        }
-    }
-}
-impl Hash for QueueConfig {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-impl PartialEq for QueueConfig {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-impl Borrow<String> for QueueConfig {
-    fn borrow(&self) -> &String {
-        &self.name
-    }
-}
-
 #[cfg(test)]
 mod priority_tests {
-    use std::collections::{HashMap, HashSet};
-
-    use priority::{Priority, QueueConfig};
-    use storage::{
-        sqlite::sqlite_utils_tests::{mock_sqlite_transaction, TransactionList},
-        TransactionStatus,
+    use std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
     };
 
-    use crate::*;
+    use crate::{
+        queue::{priority::Priority, Config},
+        storage::{
+            sqlite::sqlite_utils_tests::{mock_sqlite_transaction, TransactionList},
+            TransactionStatus,
+        },
+    };
 
     #[tokio::test]
     async fn it_should_calculate_quota() {
@@ -139,17 +109,20 @@ mod priority_tests {
         let priority = Priority::new(
             storage.clone(),
             HashSet::from_iter([
-                QueueConfig {
+                Config {
                     name: "default".into(),
                     weight: 1,
+                    chained: false,
                 },
-                QueueConfig {
+                Config {
                     name: "banana".into(),
                     weight: 2,
+                    chained: false,
                 },
-                QueueConfig {
+                Config {
                     name: "orange".into(),
                     weight: 1,
+                    chained: false,
                 },
             ]),
         );
@@ -178,9 +151,10 @@ mod priority_tests {
 
         let priority = Priority::new(
             storage.clone(),
-            HashSet::from_iter([QueueConfig {
+            HashSet::from_iter([Config {
                 name: "default".into(),
                 weight: 1,
+                chained: false,
             }]),
         );
 

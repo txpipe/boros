@@ -1,0 +1,5 @@
+#!/bin/bash
+
+BOROS_RPC="0.0.0.0:50052"
+
+grpcurl -plaintext -d "{\"queue\":  \"orange\" }" $BOROS_RPC boros.v1.submit.SubmitService.LockState

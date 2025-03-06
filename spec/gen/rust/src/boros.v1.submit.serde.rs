@@ -101,15 +101,16 @@ impl serde::Serialize for LockStateResponse {
         if !self.lock_token.is_empty() {
             len += 1;
         }
-        if !self.cbor.is_empty() {
+        if self.cbor.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("boros.v1.submit.LockStateResponse", len)?;
         if !self.lock_token.is_empty() {
             struct_ser.serialize_field("lockToken", &self.lock_token)?;
         }
-        if !self.cbor.is_empty() {
-            struct_ser.serialize_field("cbor", &self.cbor)?;
+        if let Some(v) = self.cbor.as_ref() {
+            #[allow(clippy::needless_borrow)]
+            struct_ser.serialize_field("cbor", pbjson::private::base64::encode(&v).as_str())?;
         }
         struct_ser.end()
     }
@@ -186,13 +187,15 @@ impl<'de> serde::Deserialize<'de> for LockStateResponse {
                             if cbor__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("cbor"));
                             }
-                            cbor__ = Some(map_.next_value()?);
+                            cbor__ = 
+                                map_.next_value::<::std::option::Option<::pbjson::private::BytesDeserialize<_>>>()?.map(|x| x.0)
+                            ;
                         }
                     }
                 }
                 Ok(LockStateResponse {
                     lock_token: lock_token__.unwrap_or_default(),
-                    cbor: cbor__.unwrap_or_default(),
+                    cbor: cbor__,
                 })
             }
         }

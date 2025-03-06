@@ -115,9 +115,11 @@ The `queues` section defines the options to create queues.
 | -------- | ------- | ---------- |
 | name     | string  | queue_name |
 | weight   | number  | 2          |
+| chained  | bool    | true       |
 
 - `name`: queue name that can be used in sending transactions.
 - `weight`: the weight of the queue. A queue with a bigger weight will have more priority to process transactions.
+- `chained`: define the queue's behaviour, when it's true, to send a transaction to the queue it's required to lock the state first.
 
 ## Tips
 

@@ -2,7 +2,7 @@ use std::{collections::HashSet, env, error::Error, path, sync::Arc};
 
 use anyhow::Result;
 use dotenv::dotenv;
-use priority::DEFAULT_QUEUE;
+use queue::{chaining::TxChaining, DEFAULT_QUEUE};
 use serde::Deserialize;
 use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
@@ -11,7 +11,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 
 mod ledger;
 mod pipeline;
-mod priority;
+mod queue;
 mod server;
 mod storage;
 
@@ -34,11 +34,24 @@ async fn main() -> Result<()> {
     let storage = Arc::new(SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?);
     storage.migrate().await?;
 
-    let tx_storage = Arc::new(SqliteTransaction::new(storage.clone()));
-    let cursor_storage = Arc::new(SqliteCursor::new(storage.clone()));
+    let tx_storage = Arc::new(SqliteTransaction::new(Arc::clone(&storage)));
+    let tx_chaining = Arc::new(TxChaining::new(
+        Arc::clone(&tx_storage),
+        config.clone().queues,
+    ));
 
-    let pipeline = pipeline::run(config.clone(), tx_storage.clone(), cursor_storage.clone());
-    let server = server::run(config.server, tx_storage.clone());
+    let cursor_storage = Arc::new(SqliteCursor::new(Arc::clone(&storage)));
+
+    let pipeline = pipeline::run(
+        config.clone(),
+        Arc::clone(&tx_storage),
+        Arc::clone(&cursor_storage),
+    );
+    let server = server::run(
+        config.server,
+        Arc::clone(&tx_storage),
+        Arc::clone(&tx_chaining),
+    );
 
     try_join!(pipeline, server)?;
 
@@ -52,7 +65,7 @@ struct Config {
     peer_manager: pipeline::fanout::PeerManagerConfig,
     monitor: pipeline::monitor::Config,
     #[serde(default)]
-    queues: HashSet<priority::QueueConfig>,
+    queues: HashSet<queue::Config>,
     u5c: ledger::u5c::Config,
 }
 
