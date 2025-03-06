@@ -35,10 +35,9 @@ pub async fn run(
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
     let (sender, _) = broadcast::channel::<Vec<u8>>(CAP as usize);
-    let receiver = sender.subscribe();
 
     let peer_addrs = config.peer_manager.peers.clone();
-    let peer_manager = PeerManager::new(2, peer_addrs, receiver);
+    let peer_manager = PeerManager::new(2, peer_addrs, sender.clone());
 
     peer_manager.init().await?;
 
@@ -49,7 +48,7 @@ pub async fn run(
     let ingest = ingest::Stage::new(
         tx_storage.clone(),
         priority.clone(),
-        sender,
+        sender.clone(),
         u5c_data_adapter.clone(),
     );
     let monitor = monitor::Stage::new(
