@@ -321,18 +321,29 @@ impl Peer {
     ) -> Result<Vec<mempool::Tx>, PeerError> {
         let mut txs = vec![];
         let mut rx_guard = receiver.write().await;
+        let mut remaining = req;
 
-        for _ in 0..req {
+        while remaining > 0 {
             match rx_guard.try_recv() {
                 Ok(tx_data) => {
                     let tx = mempool.receive_raw(&tx_data)?;
                     txs.push(tx);
+                    remaining -= 1;
                 }
                 Err(TryRecvError::Empty) => break,
-                Err(e) => {
-                    return Err(PeerError::TxSubmission(format!(
-                        "Error receiving from broadcast: {e:?}"
-                    )));
+                Err(TryRecvError::Lagged(count)) => {
+                    info!(
+                        "Lagged by {} messages, {} messages were dropped",
+                        count, count
+                    );
+
+                    continue;
+                }
+                Err(TryRecvError::Closed) => {
+                    return Err(PeerError::TxSubmission(
+                        "Broadcast channel closed - no more transactions can be received"
+                            .to_string(),
+                    ));
                 }
             }
         }
