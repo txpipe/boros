@@ -58,7 +58,7 @@ pub async fn run(
         tx_storage.clone(),
         cursor_storage.clone(),
     );
-    let _peer_discovery = peer_discovery::Stage::new(
+    let peer_discovery = peer_discovery::Stage::new(
         config.peer_manager.clone(),
         peer_manager.clone(),
         _relay_adapter,
@@ -68,8 +68,9 @@ pub async fn run(
 
     let ingest = gasket::runtime::spawn_stage(ingest, policy.clone());
     let monitor = gasket::runtime::spawn_stage(monitor, policy.clone());
+    let peer_discovery = gasket::runtime::spawn_stage(peer_discovery, policy.clone());
 
-    let daemon = gasket::daemon::Daemon::new(vec![ingest, monitor]);
+    let daemon = gasket::daemon::Daemon::new(vec![ingest, monitor, peer_discovery]);
     daemon.block();
 
     Ok(())
