@@ -219,7 +219,7 @@ impl Peer {
                             }
                         };
 
-                        Self::reply_txs(
+                        if let Err(e) = Self::reply_txs(
                             &mempool_guard,
                             tx_submit_client_ref,
                             ack as usize,
@@ -228,34 +228,28 @@ impl Peer {
                             &receiver,
                         )
                         .await
-                        .ok();
+                        {
+                            error!(peer=%peer_addr, error=?e, "Failed to reply with transactions");
+                        }
                     }
                     Request::TxIdsNonBlocking(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Non-Blocking request: ack={}, req={}", ack, req);
                         let mempool_guard = mempool_arc.lock().await;
                         mempool_guard.acknowledge(ack as usize);
 
-                        let mut txs = vec![];
-                        let mut recv = receiver.write().await;
-
-                        for _ in 0..req {
-                            match recv.try_recv() {
-                                Ok(tx_data) => {
-                                    if let Ok(hash) = mempool_guard.receive_raw(&tx_data) {
-                                        if let Some(tx) = mempool_guard.find_inflight(&hash) {
-                                            txs.push(tx);
-                                        }
-                                    }
-                                }
-                                Err(TryRecvError::Closed) => {
-                                    error!(peer=%peer_addr, "Channel closed; breaking");
-                                }
-                                Err(_) => {
-                                    error!(peer=%peer_addr, "Channel lagged; breaking");
-                                }
+                        let txs = match Self::collect_transactions(
+                            &mempool_guard,
+                            &receiver,
+                            req.into(),
+                        )
+                        .await
+                        {
+                            Ok(txs) => txs,
+                            Err(e) => {
+                                error!(peer=%peer_addr, error=?e, "Failed to collect transactions");
+                                vec![]
                             }
-                        }
-                        drop(mempool_guard);
+                        };
 
                         let mut client_guard = tx_submit_client.lock().await;
                         let tx_submit_client_ref = match client_guard.as_mut() {
@@ -315,52 +309,31 @@ impl Peer {
         unfulfilled_request: &Arc<RwLock<Option<usize>>>,
         receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
     ) -> Result<(), PeerError> {
-        let mut txs = vec![];
-        let mut recv = receiver.write().await;
-
-        for _ in 0..request {
-            match recv.try_recv() {
-                Ok(tx_data) => {
-                    let mempool = mempool.lock().await;
-                    if let Ok(hash) = mempool.receive_raw(&tx_data) {
-                        if let Some(tx) = mempool.find_inflight(&hash) {
-                            txs.push(tx);
-                        }
-                    }
-                }
-                Err(TryRecvError::Empty) => {
-                    break;
-                }
-                Err(e) => {
-                    return Err(PeerError::TxSubmission(format!(
-                        "Error receiving from broadcast: {:?}",
-                        e
-                    )));
-                }
-            }
-        }
+        let txs = {
+            let mempool_guard = mempool.lock().await;
+            let result = Self::collect_transactions(&mempool_guard, receiver, request).await?;
+            result
+        };
 
         if !txs.is_empty() {
-            let mempool_guard = mempool.lock().await;
-            let mut client_guard = tx_submit_client.lock().await;
+            {
+                let mempool_guard = mempool.lock().await;
+                mempool_guard.acknowledge(0);
+            }
 
+            let mut client_guard = tx_submit_client.lock().await;
             let tx_submit_client_ref = match client_guard.as_mut() {
                 Some(c) => c,
                 None => {
-                    error!(peer=%peer_addr, "No client available; breaking");
+                    error!(peer=%peer_addr, "No client available");
                     return Err(PeerError::TxSubmission("No client available".to_string()));
                 }
             };
 
-            Self::reply_txs(
-                &mempool_guard,
-                tx_submit_client_ref,
-                0,
-                request,
-                unfulfilled_request,
-                receiver,
-            )
-            .await?;
+            Self::propagate_txs(tx_submit_client_ref, txs).await?;
+
+            let mut unfulfilled = unfulfilled_request.write().await;
+            *unfulfilled = None;
         } else {
             tokio::time::sleep(Duration::from_secs(10)).await;
         }
@@ -378,31 +351,7 @@ impl Peer {
     ) -> Result<(), PeerError> {
         mempool.acknowledge(ack);
 
-        let mut txs = vec![];
-        let mut rx_guard = receiver.write().await;
-
-        for _ in 0..req {
-            match rx_guard.try_recv() {
-                Ok(tx_data) => {
-                    // Process the transaction and add to inflight
-                    if let Ok(hash) = mempool.receive_raw(&tx_data) {
-                        // Find the transaction we just added to inflight
-                        if let Some(tx) = mempool.find_inflight(&hash) {
-                            txs.push(tx);
-                        }
-                    }
-                }
-                Err(TryRecvError::Empty) => {
-                    break;
-                }
-                Err(e) => {
-                    return Err(PeerError::TxSubmission(format!(
-                        "Error receiving from broadcast: {:?}",
-                        e
-                    )));
-                }
-            }
-        }
+        let txs = Self::collect_transactions(mempool, receiver, req).await?;
 
         if !txs.is_empty() {
             Self::propagate_txs(tx_submit_client, txs).await?;
@@ -410,7 +359,6 @@ impl Peer {
             *unfulfilled = None;
             Ok(())
         } else {
-            // If no transactions were available, store the request for later
             let mut unfulfilled = unfulfilled_request.write().await;
             *unfulfilled = Some(req);
             Ok(())
@@ -431,5 +379,39 @@ impl Peer {
         })?;
 
         Ok(())
+    }
+
+    async fn collect_transactions(
+        mempool: &Mempool,
+        receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
+        req: usize,
+    ) -> Result<Vec<mempool::Tx>, PeerError> {
+        let mut txs = vec![];
+        let mut rx_guard = receiver.write().await;
+
+        for _ in 0..req {
+            match rx_guard.try_recv() {
+                Ok(tx_data) => {
+                    let tx = {
+                        match mempool.receive_raw(&tx_data) {
+                            Ok(hash) => mempool.find_inflight(&hash),
+                            Err(_) => None,
+                        }
+                    };
+
+                    if let Some(tx) = tx {
+                        txs.push(tx);
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(e) => {
+                    return Err(PeerError::TxSubmission(format!(
+                        "Error receiving from broadcast: {e:?}"
+                    )));
+                }
+            }
+        }
+
+        Ok(txs)
     }
 }

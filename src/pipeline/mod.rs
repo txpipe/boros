@@ -20,7 +20,7 @@ use crate::peer::peer_manager::PeerManager;
 
 pub mod ingest;
 pub mod monitor;
-pub mod peersharing;
+pub mod peer_discovery;
 
 const CAP: u16 = 50;
 
@@ -41,19 +41,24 @@ pub async fn run(
     let peer_manager = PeerManager::new(2, peer_addrs, receiver);
 
     peer_manager.init().await?;
-    
+
     let peer_manager = Arc::new(peer_manager);
 
     let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues));
 
-    let ingest = ingest::Stage::new(tx_storage.clone(), priority.clone(), sender);
+    let ingest = ingest::Stage::new(
+        tx_storage.clone(),
+        priority.clone(),
+        sender,
+        u5c_data_adapter.clone(),
+    );
     let monitor = monitor::Stage::new(
         config.monitor,
         u5c_data_adapter.clone(),
         tx_storage.clone(),
         cursor_storage.clone(),
     );
-    let _peersharing = peersharing::Stage::new(
+    let _peer_discovery = peer_discovery::Stage::new(
         config.peer_manager.clone(),
         peer_manager.clone(),
         _relay_adapter,
