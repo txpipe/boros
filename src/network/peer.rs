@@ -18,7 +18,7 @@ use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task;
 use tokio::time::timeout;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use super::mempool::{self, Mempool, MempoolError};
 
@@ -184,8 +184,26 @@ impl Peer {
                 match request {
                     Request::TxIds(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Blocking request: ack={}, req={}", ack, req);
+
+                        let mempool_guard = mempool_arc.lock().await;
+                        mempool_guard.acknowledge(ack.into());
+                        drop(mempool_guard);
+
+                        let raw_txs = Self::collect_transactions(&receiver, req.into())
+                            .await
+                            .unwrap_or_default();
+
+                        let mempool_guard = mempool_arc.lock().await;
+                        let txs = raw_txs
+                            .into_iter()
+                            .filter_map(|raw_tx| mempool_guard.receive_raw(&raw_tx).ok())
+                            .collect_vec();
+                        drop(mempool_guard);
+
+                        info!(peer=%peer_addr, "Requested {}; received {}", req, txs.len());
+
                         let mut client_guard = tx_submit_client.lock().await;
-                        let tx_submit_client_ref = match client_guard.as_mut() {
+                        let client = match client_guard.as_mut() {
                             Some(c) => c,
                             None => {
                                 error!(peer=%peer_addr, "No client available; breaking");
@@ -193,29 +211,19 @@ impl Peer {
                             }
                         };
 
-                        let mempool_guard = mempool_arc.lock().await;
-                        mempool_guard.acknowledge(ack.into());
-
-                        let txs =
-                            (Self::collect_transactions( &receiver, req.into())
-                                .await)
-                                .unwrap_or_default();
-                        let txs = txs.into_iter().map(|x| mempool_guard.receive_raw(&x).unwrap()).collect_vec();
-
-                        info!("Requested {}; received {}", req, txs.len());
-
-                        if let Err(err) = Self::propagate_txs(tx_submit_client_ref, txs).await {
+                        if let Err(err) = Self::propagate_txs(client, txs).await {
                             error!(peer=%peer_addr, error=?err, "Error propagating TXs");
                         }
                     }
                     Request::TxIdsNonBlocking(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Non-Blocking request: ack={}, req={}", ack, req);
-                        
+
                         let mempool_guard = mempool_arc.lock().await;
                         mempool_guard.acknowledge(ack.into());
+                        drop(mempool_guard);
 
                         let timeout_duration = Duration::from_secs(1);
-                        let txs = match timeout(
+                        let raw_txs = match timeout(
                             timeout_duration,
                             Self::collect_transactions(&receiver, req.into()),
                         )
@@ -226,10 +234,18 @@ impl Peer {
                                 error!(peer=%peer_addr, error=?e, "Failed to collect transactions");
                                 vec![]
                             }
-                            Err(_) => vec![],
+                            Err(_) => {
+                                info!(peer=%peer_addr, "Timeout collecting transactions");
+                                vec![]
+                            }
                         };
 
-                        let txs = txs.into_iter().map(|x| mempool_guard.receive_raw(&x).unwrap()).collect_vec();
+                        let mempool_guard = mempool_arc.lock().await;
+                        let txs = raw_txs
+                            .into_iter()
+                            .filter_map(|raw_tx| mempool_guard.receive_raw(&raw_tx).ok())
+                            .collect_vec();
+                        drop(mempool_guard);
 
                         let mut client_guard = tx_submit_client.lock().await;
                         let tx_submit_client_ref = match client_guard.as_mut() {
@@ -304,12 +320,10 @@ impl Peer {
         req: usize,
     ) -> Result<Vec<Vec<u8>>, PeerError> {
         let mut txs = vec![];
-        // Define a reasonable timeout (e.g., 500ms)
         let timeout_duration = Duration::from_millis(500);
+        let mut remaining = req;
 
-        // Try to collect up to req transactions with timeout
-        for _ in 0..req {
-            // Try to receive a message with timeout
+        while remaining > 0 {
             let tx_result = timeout(timeout_duration, async {
                 let mut receiver_guard = receiver.write().await;
                 receiver_guard.recv().await
@@ -317,19 +331,16 @@ impl Peer {
             .await;
 
             match tx_result {
-                // Successfully received a transaction within timeout
                 Ok(Ok(received_msg)) => {
                     let tx_raw = received_msg.payload;
                     txs.push(tx_raw);
+                    remaining -= 1;
                 }
-                // Timeout occurred
+                Ok(Err(_)) => {
+                    warn!("Message lagged behind; skipping");
+                    continue;
+                }
                 Err(_) => {
-                    // If we have at least one transaction, return them
-                    if !txs.is_empty() {
-                        break;
-                    }
-
-                    // If no transactions yet, we have to block for at least one
                     if txs.is_empty() {
                         let received_msg = {
                             let mut receiver_guard = receiver.write().await;
@@ -341,15 +352,9 @@ impl Peer {
 
                         let tx_raw = received_msg.payload;
                         txs.push(tx_raw);
-                        break;
                     }
-                }
-                // Error in receiving
-                Ok(Err(e)) => {
-                    return Err(PeerError::TxSubmission(format!(
-                        "Failed to receive message: {:?}",
-                        e
-                    )));
+
+                    break;
                 }
             }
         }
