@@ -1,11 +1,11 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use pallas::network::miniprotocols::peersharing::PeerAddress;
 use rand::seq::{IndexedMutRandom, IndexedRandom};
 use serde::Deserialize;
 use thiserror::Error;
-use tokio::sync::broadcast::Sender;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 use tracing::{error, info, warn};
@@ -24,14 +24,14 @@ pub enum PeerManagerError {
 pub struct PeerManager {
     network_magic: u64,
     peers: RwLock<HashMap<String, Option<Peer>>>,
-    sender: Sender<Vec<u8>>,
+    receiver: gasket::messaging::tokio::ChannelRecvAdapter<Vec<u8>>,
 }
 
 impl PeerManager {
     pub fn new(
         network_magic: u64,
         peer_addresses: Vec<String>,
-        sender: Sender<Vec<u8>>,
+        receiver: gasket::messaging::tokio::ChannelRecvAdapter<Vec<u8>>,
     ) -> Self {
         let peers = peer_addresses
             .into_iter()
@@ -41,15 +41,18 @@ impl PeerManager {
         Self {
             network_magic,
             peers: RwLock::new(peers),
-            sender,
+            receiver,
         }
     }
 
     pub async fn init(&self) -> Result<(), PeerManagerError> {
         let mut peers = self.peers.write().await;
         for (peer_addr, peer) in peers.iter_mut() {
-            let mut new_peer =
-                Peer::new(peer_addr, self.network_magic, self.sender.subscribe());
+            let mut new_peer = Peer::new(peer_addr, self.network_magic);
+
+            let mut input_port = gasket::messaging::InputPort::<Vec<u8>>::default();
+            input_port.connect(self.receiver.clone());
+            new_peer.receiver = Arc::new(RwLock::new(input_port));
 
             new_peer.is_peer_sharing_enabled = new_peer
                 .query_peer_sharing_mode()
@@ -117,7 +120,12 @@ impl PeerManager {
             return;
         }
 
-        let mut new_peer = Peer::new(peer_addr, self.network_magic, self.sender.subscribe());
+        let mut new_peer = Peer::new(peer_addr, self.network_magic);
+
+        let mut input_port = gasket::messaging::InputPort::<Vec<u8>>::default();
+        input_port.connect(self.receiver.clone());
+        new_peer.receiver = Arc::new(RwLock::new(input_port));
+
         let timeout_duration = Duration::from_secs(5);
 
         match timeout(timeout_duration, new_peer.init()).await {

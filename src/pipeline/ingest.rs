@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use gasket::framework::*;
-use tokio::{sync::broadcast::Sender, time::sleep};
+use tokio::time::sleep;
 use tracing::info;
 
 use super::CAP;
@@ -16,22 +16,21 @@ use crate::{
 pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
-    sender: Sender<Vec<u8>>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
+    pub sender: gasket::messaging::OutputPort<Vec<u8>>,
 }
 
 impl Stage {
     pub fn new(
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
-        sender: Sender<Vec<u8>>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
     ) -> Self {
         Self {
             storage,
             priority,
-            sender,
             u5c_adapter,
+            sender: Default::default(),
         }
     }
 }
@@ -68,27 +67,18 @@ impl gasket::framework::Worker<Stage> for Worker {
         stage: &mut Stage,
     ) -> Result<(), WorkerError> {
         for tx in unit {
-            let receiver_count = stage.sender.receiver_count();
             let mut tx = tx.clone();
+            let message = gasket::messaging::Message::from(tx.raw.clone());
 
-            if receiver_count > 0 {
-                let broadcast_result = stage.sender.send(tx.raw.clone());
-
-                match broadcast_result {
-                    Ok(n) => {
-                        info!("Transaction {} broadcasted to {} receivers", tx.id, n);
-
-                        let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
-
-                        tx.status = TransactionStatus::InFlight;
-                        tx.slot = Some(tip.0);
-
-                        stage.storage.update(&tx).await.or_retry()?;
-                    }
-                    Err(e) => info!("Failed to broadcast transaction: {}", e),
-                }
+            if let Err(e) = stage.sender.send(message).await {
+                info!("Failed to broadcast transaction: {}", e);
             } else {
-                info!("No receivers available for broadcasting");
+                info!("Transaction {} broadcasted to receivers", tx.id);
+
+                let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
+                tx.status = TransactionStatus::InFlight;
+                tx.slot = Some(tip.0);
+                stage.storage.update(&tx).await.or_retry()?;
             }
         }
 

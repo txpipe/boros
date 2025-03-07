@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use tokio::sync::broadcast;
 
 use crate::{
     ledger::{
@@ -34,10 +33,10 @@ pub async fn run(
         Arc::new(MockRelayDataAdapter::new());
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
-    let (sender, _) = broadcast::channel::<Vec<u8>>(CAP as usize);
+    let (sender, receiver) = gasket::messaging::tokio::broadcast_channel::<Vec<u8>>(CAP as usize);
 
     let peer_addrs = config.peer_manager.peers.clone();
-    let peer_manager = PeerManager::new(2, peer_addrs, sender.clone());
+    let peer_manager = PeerManager::new(2, peer_addrs, receiver);
 
     peer_manager.init().await?;
 
@@ -45,12 +44,14 @@ pub async fn run(
 
     let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues));
 
-    let ingest = ingest::Stage::new(
+    let mut ingest = ingest::Stage::new(
         tx_storage.clone(),
         priority.clone(),
-        sender.clone(),
         u5c_data_adapter.clone(),
     );
+
+    ingest.sender.connect(sender);
+
     let monitor = monitor::Stage::new(
         config.monitor,
         u5c_data_adapter.clone(),

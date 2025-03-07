@@ -14,8 +14,6 @@ use pallas::network::miniprotocols::{
 use pallas::network::multiplexer::RunningPlexer;
 use pallas::network::{facades::PeerClient, miniprotocols::txsubmission::TxIdAndSize};
 use thiserror::Error;
-use tokio::sync::broadcast::error::TryRecvError;
-use tokio::sync::broadcast::Receiver;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task;
 use tracing::{error, info};
@@ -43,14 +41,14 @@ pub struct Peer {
     tx_submit_client: Arc<Mutex<Option<TxSubmitClient>>>,
     peer_sharing_client: Arc<Mutex<Option<PeerSharingClient>>>,
     network_magic: u64,
-    receiver: Arc<RwLock<Receiver<Vec<u8>>>>,
+    pub receiver: Arc<RwLock<gasket::messaging::InputPort<Vec<u8>>>>,
     pub peer_addr: String,
     pub is_peer_sharing_enabled: bool,
     pub is_alive: bool,
 }
 
 impl Peer {
-    pub fn new(peer_addr: &str, network_magic: u64, receiver: Receiver<Vec<u8>>) -> Self {
+    pub fn new(peer_addr: &str, network_magic: u64) -> Self {
         Self {
             mempool: Arc::new(Mutex::new(Mempool::new())),
             plexer_client: Arc::new(Mutex::new(None)),
@@ -58,7 +56,7 @@ impl Peer {
             peer_sharing_client: Arc::new(Mutex::new(None)),
             peer_addr: peer_addr.to_string(),
             network_magic,
-            receiver: Arc::new(RwLock::new(receiver)),
+            receiver: Default::default(),
             is_peer_sharing_enabled: false,
             is_alive: false,
         }
@@ -280,11 +278,12 @@ impl Peer {
         tx_submit_client: &mut TxSubmitClient,
         ack: usize,
         req: usize,
-        receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
+        receiver: &Arc<RwLock<gasket::messaging::InputPort<Vec<u8>>>>,
     ) -> Result<(), PeerError> {
         mempool.acknowledge(ack);
 
         let mut txs = Self::collect_transactions(mempool, receiver, req).await?;
+        info!("Received {} transactions", txs.len());
 
         if txs.is_empty() {
             info!("No transactions available; waiting for at least one");
@@ -316,36 +315,21 @@ impl Peer {
 
     async fn collect_transactions(
         mempool: &Mempool,
-        receiver: &Arc<RwLock<Receiver<Vec<u8>>>>,
+        receiver: &Arc<RwLock<gasket::messaging::InputPort<Vec<u8>>>>,
         req: usize,
     ) -> Result<Vec<mempool::Tx>, PeerError> {
         let mut txs = vec![];
-        let mut rx_guard = receiver.write().await;
-        let mut remaining = req;
 
-        while remaining > 0 {
-            match rx_guard.try_recv() {
-                Ok(tx_data) => {
-                    let tx = mempool.receive_raw(&tx_data)?;
-                    txs.push(tx);
-                    remaining -= 1;
-                }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Lagged(count)) => {
-                    info!(
-                        "Lagged by {} messages, {} messages were dropped",
-                        count, count
-                    );
-
-                    continue;
-                }
-                Err(TryRecvError::Closed) => {
-                    return Err(PeerError::TxSubmission(
-                        "Broadcast channel closed - no more transactions can be received"
-                            .to_string(),
-                    ));
-                }
+        for _ in 0..req {
+            let received_msg = {
+                let mut receiver_guard = receiver.write().await;
+                receiver_guard.recv().await
             }
+            .map_err(|e| PeerError::TxSubmission(format!("Failed to receive message: {:?}", e)))?;
+
+            let tx_raw = received_msg.payload;
+            let tx = mempool.receive_raw(&tx_raw)?;
+            txs.push(tx);
         }
 
         Ok(txs)

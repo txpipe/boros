@@ -27,7 +27,7 @@ pub enum FanoutError {
 }
 
 #[derive(Stage)]
-#[stage(name = "fanout", unit = "String", worker = "Worker")]
+#[stage(name = "peer_discovery", unit = "String", worker = "Worker")]
 pub struct Stage {
     config: PeerManagerConfig,
     peer_manager: Arc<PeerManager>,
