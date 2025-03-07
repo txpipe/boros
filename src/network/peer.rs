@@ -196,13 +196,11 @@ impl Peer {
                         let mempool_guard = mempool_arc.lock().await;
                         mempool_guard.acknowledge(ack.into());
 
-                        let txs = if let Ok(txs) =
-                            Self::collect_transactions(&mempool_guard, &receiver, req.into()).await
-                        {
-                            txs
-                        } else {
-                            vec![]
-                        };
+                        let txs =
+                            (Self::collect_transactions( &receiver, req.into())
+                                .await)
+                                .unwrap_or_default();
+                        let txs = txs.into_iter().map(|x| mempool_guard.receive_raw(&x).unwrap()).collect_vec();
 
                         info!("Requested {}; received {}", req, txs.len());
 
@@ -212,13 +210,14 @@ impl Peer {
                     }
                     Request::TxIdsNonBlocking(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Non-Blocking request: ack={}, req={}", ack, req);
+                        
                         let mempool_guard = mempool_arc.lock().await;
                         mempool_guard.acknowledge(ack.into());
 
                         let timeout_duration = Duration::from_secs(1);
                         let txs = match timeout(
                             timeout_duration,
-                            Self::collect_transactions(&mempool_guard, &receiver, req.into()),
+                            Self::collect_transactions(&receiver, req.into()),
                         )
                         .await
                         {
@@ -229,6 +228,8 @@ impl Peer {
                             }
                             Err(_) => vec![],
                         };
+
+                        let txs = txs.into_iter().map(|x| mempool_guard.receive_raw(&x).unwrap()).collect_vec();
 
                         let mut client_guard = tx_submit_client.lock().await;
                         let tx_submit_client_ref = match client_guard.as_mut() {
@@ -299,22 +300,58 @@ impl Peer {
     }
 
     async fn collect_transactions(
-        mempool: &Mempool,
         receiver: &Arc<RwLock<InputPort<Vec<u8>>>>,
         req: usize,
-    ) -> Result<Vec<mempool::Tx>, PeerError> {
+    ) -> Result<Vec<Vec<u8>>, PeerError> {
         let mut txs = vec![];
+        // Define a reasonable timeout (e.g., 500ms)
+        let timeout_duration = Duration::from_millis(500);
 
+        // Try to collect up to req transactions with timeout
         for _ in 0..req {
-            let received_msg = {
+            // Try to receive a message with timeout
+            let tx_result = timeout(timeout_duration, async {
                 let mut receiver_guard = receiver.write().await;
                 receiver_guard.recv().await
-            }
-            .map_err(|e| PeerError::TxSubmission(format!("Failed to receive message: {:?}", e)))?;
+            })
+            .await;
 
-            let tx_raw = received_msg.payload;
-            let tx = mempool.receive_raw(&tx_raw)?;
-            txs.push(tx);
+            match tx_result {
+                // Successfully received a transaction within timeout
+                Ok(Ok(received_msg)) => {
+                    let tx_raw = received_msg.payload;
+                    txs.push(tx_raw);
+                }
+                // Timeout occurred
+                Err(_) => {
+                    // If we have at least one transaction, return them
+                    if !txs.is_empty() {
+                        break;
+                    }
+
+                    // If no transactions yet, we have to block for at least one
+                    if txs.is_empty() {
+                        let received_msg = {
+                            let mut receiver_guard = receiver.write().await;
+                            receiver_guard.recv().await
+                        }
+                        .map_err(|e| {
+                            PeerError::TxSubmission(format!("Failed to receive message: {:?}", e))
+                        })?;
+
+                        let tx_raw = received_msg.payload;
+                        txs.push(tx_raw);
+                        break;
+                    }
+                }
+                // Error in receiving
+                Ok(Err(e)) => {
+                    return Err(PeerError::TxSubmission(format!(
+                        "Failed to receive message: {:?}",
+                        e
+                    )));
+                }
+            }
         }
 
         Ok(txs)

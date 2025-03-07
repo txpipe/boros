@@ -6,16 +6,11 @@ use crate::{
     ledger::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
         u5c::{Point, U5cDataAdapterImpl},
-    },
-    priority::Priority,
-    storage::{
+    }, network::peer_manager::PeerManager, priority::Priority, storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
-    },
-    Config,
+    }, Config
 };
-
-use crate::peer::peer_manager::PeerManager;
 
 pub mod ingest;
 pub mod monitor;
@@ -50,7 +45,7 @@ pub async fn run(
         u5c_data_adapter.clone(),
     );
 
-    ingest.sender.connect(sender);
+    ingest.output.connect(sender);
 
     let monitor = monitor::Stage::new(
         config.monitor,

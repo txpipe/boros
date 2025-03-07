@@ -6,13 +6,7 @@ use thiserror::Error;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::{
-    ledger::relay::RelayDataAdapter,
-    peer::{
-        peer::PeerError,
-        peer_manager::{PeerManager, PeerManagerConfig, PeerManagerError},
-    },
-};
+use crate::{ledger::relay::RelayDataAdapter, network::{peer::PeerError, peer_manager::{PeerManager, PeerManagerConfig, PeerManagerError}}};
 
 #[derive(Error, Debug)]
 pub enum FanoutError {
@@ -100,7 +94,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     }
 
     async fn execute(&mut self, unit: &String, stage: &mut Stage) -> Result<(), WorkerError> {
-        stage.peer_manager.add_peer(&unit).await;
+        stage.peer_manager.add_peer(unit).await;
         self.peer_discovery_queue -= 1;
 
         Ok(())

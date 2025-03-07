@@ -17,7 +17,7 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
-    pub sender: OutputPort<Vec<u8>>,
+    pub output: OutputPort<Vec<u8>>,
 }
 
 impl Stage {
@@ -30,7 +30,7 @@ impl Stage {
             storage,
             priority,
             u5c_adapter,
-            sender: Default::default(),
+            output: Default::default(),
         }
     }
 }
@@ -70,7 +70,7 @@ impl gasket::framework::Worker<Stage> for Worker {
             let mut tx = tx.clone();
             let message = Message::from(tx.raw.clone());
 
-            if let Err(e) = stage.sender.send(message).await {
+            if let Err(e) = stage.output.send(message).await {
                 info!("Failed to broadcast transaction: {}", e);
             } else {
                 info!("Transaction {} broadcasted to receivers", tx.id);
