@@ -337,7 +337,7 @@ impl Peer {
                     remaining -= 1;
                 }
                 Ok(Err(_)) => {
-                    warn!("Message lagged behind; skipping");
+                    warn!("Transaction receive error: input port lagged; skipping");
                     continue;
                 }
                 Err(_) => {
