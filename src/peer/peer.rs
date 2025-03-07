@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::vec;
 
+use gasket::messaging::InputPort;
 use itertools::Itertools;
 use pallas::crypto::hash::Hash;
 use pallas::network::miniprotocols::{
@@ -41,7 +42,7 @@ pub struct Peer {
     tx_submit_client: Arc<Mutex<Option<TxSubmitClient>>>,
     peer_sharing_client: Arc<Mutex<Option<PeerSharingClient>>>,
     network_magic: u64,
-    pub receiver: Arc<RwLock<gasket::messaging::InputPort<Vec<u8>>>>,
+    pub input: Arc<RwLock<InputPort<Vec<u8>>>>,
     pub peer_addr: String,
     pub is_peer_sharing_enabled: bool,
     pub is_alive: bool,
@@ -56,7 +57,7 @@ impl Peer {
             peer_sharing_client: Arc::new(Mutex::new(None)),
             peer_addr: peer_addr.to_string(),
             network_magic,
-            receiver: Default::default(),
+            input: Default::default(),
             is_peer_sharing_enabled: false,
             is_alive: false,
         }
@@ -151,7 +152,7 @@ impl Peer {
         let tx_submit_client = Arc::clone(&self.tx_submit_client);
         let mempool_arc = Arc::clone(&self.mempool);
         let peer_addr = self.peer_addr.clone();
-        let receiver = Arc::clone(&self.receiver);
+        let receiver = Arc::clone(&self.input);
 
         task::spawn(async move {
             loop {
@@ -278,7 +279,7 @@ impl Peer {
         tx_submit_client: &mut TxSubmitClient,
         ack: usize,
         req: usize,
-        receiver: &Arc<RwLock<gasket::messaging::InputPort<Vec<u8>>>>,
+        receiver: &Arc<RwLock<InputPort<Vec<u8>>>>,
     ) -> Result<(), PeerError> {
         mempool.acknowledge(ack);
 
@@ -315,7 +316,7 @@ impl Peer {
 
     async fn collect_transactions(
         mempool: &Mempool,
-        receiver: &Arc<RwLock<gasket::messaging::InputPort<Vec<u8>>>>,
+        receiver: &Arc<RwLock<InputPort<Vec<u8>>>>,
         req: usize,
     ) -> Result<Vec<mempool::Tx>, PeerError> {
         let mut txs = vec![];

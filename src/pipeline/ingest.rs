@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use gasket::framework::*;
+use gasket::{framework::*, messaging::{Message, OutputPort}};
 use tokio::time::sleep;
 use tracing::info;
 
@@ -17,7 +17,7 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
-    pub sender: gasket::messaging::OutputPort<Vec<u8>>,
+    pub sender: OutputPort<Vec<u8>>,
 }
 
 impl Stage {
@@ -68,7 +68,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<(), WorkerError> {
         for tx in unit {
             let mut tx = tx.clone();
-            let message = gasket::messaging::Message::from(tx.raw.clone());
+            let message = Message::from(tx.raw.clone());
 
             if let Err(e) = stage.sender.send(message).await {
                 info!("Failed to broadcast transaction: {}", e);
