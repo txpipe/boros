@@ -17,6 +17,7 @@ use pallas::network::{facades::PeerClient, miniprotocols::txsubmission::TxIdAndS
 use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task;
+use tokio::time::timeout;
 use tracing::{error, info};
 
 use super::mempool::{self, Mempool, MempoolError};
@@ -183,7 +184,6 @@ impl Peer {
                 match request {
                     Request::TxIds(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Blocking request: ack={}, req={}", ack, req);
-                        let mempool_guard = mempool_arc.lock().await;
                         let mut client_guard = tx_submit_client.lock().await;
                         let tx_submit_client_ref = match client_guard.as_mut() {
                             Some(c) => c,
@@ -193,35 +193,41 @@ impl Peer {
                             }
                         };
 
-                        if let Err(e) = Self::reply_txs_blocking(
-                            &mempool_guard,
-                            tx_submit_client_ref,
-                            ack as usize,
-                            req as usize,
-                            &receiver,
-                        )
-                        .await
+                        let mempool_guard = mempool_arc.lock().await;
+                        mempool_guard.acknowledge(ack.into());
+
+                        let txs = if let Ok(txs) =
+                            Self::collect_transactions(&mempool_guard, &receiver, req.into()).await
                         {
-                            error!(peer=%peer_addr, error=?e, "Failed to reply with transactions");
+                            txs
+                        } else {
+                            vec![]
+                        };
+
+                        info!("Requested {}; received {}", req, txs.len());
+
+                        if let Err(err) = Self::propagate_txs(tx_submit_client_ref, txs).await {
+                            error!(peer=%peer_addr, error=?err, "Error propagating TXs");
                         }
                     }
                     Request::TxIdsNonBlocking(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Non-Blocking request: ack={}, req={}", ack, req);
                         let mempool_guard = mempool_arc.lock().await;
-                        mempool_guard.acknowledge(ack as usize);
+                        mempool_guard.acknowledge(ack.into());
 
-                        let txs = match Self::collect_transactions(
-                            &mempool_guard,
-                            &receiver,
-                            req.into(),
+                        let timeout_duration = Duration::from_secs(1);
+                        let txs = match timeout(
+                            timeout_duration,
+                            Self::collect_transactions(&mempool_guard, &receiver, req.into()),
                         )
                         .await
                         {
-                            Ok(txs) => txs,
-                            Err(e) => {
+                            Ok(Ok(txs)) => txs,
+                            Ok(Err(e)) => {
                                 error!(peer=%peer_addr, error=?e, "Failed to collect transactions");
                                 vec![]
                             }
+                            Err(_) => vec![],
                         };
 
                         let mut client_guard = tx_submit_client.lock().await;
@@ -233,7 +239,9 @@ impl Peer {
                             }
                         };
 
-                        Self::propagate_txs(tx_submit_client_ref, txs).await.ok();
+                        if let Err(err) = Self::propagate_txs(tx_submit_client_ref, txs).await {
+                            error!(peer=%peer_addr, error=?err, "Error propagating TXs");
+                        }
                     }
                     Request::Txs(ids) => {
                         let ids: Vec<_> = ids.iter().map(|x| (x.0, x.1.clone())).collect();
@@ -272,30 +280,6 @@ impl Peer {
                 client.abort().await
             }
         });
-    }
-
-    async fn reply_txs_blocking(
-        mempool: &Mempool,
-        tx_submit_client: &mut TxSubmitClient,
-        ack: usize,
-        req: usize,
-        receiver: &Arc<RwLock<InputPort<Vec<u8>>>>,
-    ) -> Result<(), PeerError> {
-        mempool.acknowledge(ack);
-
-        let mut txs = Self::collect_transactions(mempool, receiver, req).await?;
-        info!("Received {} transactions", txs.len());
-
-        if txs.is_empty() {
-            info!("No transactions available; waiting for at least one");
-
-            while txs.is_empty() {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                txs = Self::collect_transactions(mempool, receiver, req).await?;
-            }
-        }
-
-        Self::propagate_txs(tx_submit_client, txs).await
     }
 
     async fn propagate_txs(
