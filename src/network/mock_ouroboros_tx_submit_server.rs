@@ -301,9 +301,13 @@ mod broadcast_tests {
         // Allow time for final processing
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        // 4. Count and compare processed transactions
-        let fast_tx_count = fast_server.acknowledge_txs.lock().unwrap().len();
-        let slow_tx_count = slow_server.acknowledge_txs.lock().unwrap().len();
+        // 4. Extract the transaction hashes for analysis
+        let fast_tx_hashes = fast_server.acknowledge_txs.lock().unwrap().clone();
+        let slow_tx_hashes = slow_server.acknowledge_txs.lock().unwrap().clone();
+
+        // Count and compare processed transactions
+        let fast_tx_count = fast_tx_hashes.len();
+        let slow_tx_count = slow_tx_hashes.len();
 
         info!(
             "Fast server processed {} transactions, Slow server processed {} transactions",
@@ -313,11 +317,6 @@ mod broadcast_tests {
         // 5. Assert that the fast server processed more transactions
         assert_eq!(sample_txs.len(), fast_tx_count);
         assert_ne!(sample_txs.len(), slow_tx_count);
-
-        // After current assertions, add this code:
-        // Extract the transaction hashes for analysis
-        let fast_tx_hashes = fast_server.acknowledge_txs.lock().unwrap().clone();
-        let slow_tx_hashes = slow_server.acknowledge_txs.lock().unwrap().clone();
 
         // Count transactions that were processed by fast but lagged in slow
         let mut lagged_txs = 0;
