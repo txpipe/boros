@@ -1,5 +1,8 @@
-use std::sync::{Arc, Mutex, RwLock};
-use tokio::{net::TcpListener, task};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::{net::TcpListener, sync::RwLock, task};
 use tracing::{error, info};
 
 use pallas::network::{
@@ -12,6 +15,7 @@ pub struct MockOuroborosTxSubmitPeerServer {
     pub network_magic: u64,
     pub acknowledge_txs: Arc<Mutex<Vec<pallas::crypto::hash::Hash<32>>>>,
     pub is_done: Arc<RwLock<bool>>,
+    pub processing_delay: Option<Duration>,
 }
 
 impl MockOuroborosTxSubmitPeerServer {
@@ -21,6 +25,7 @@ impl MockOuroborosTxSubmitPeerServer {
             network_magic,
             acknowledge_txs: Arc::new(Mutex::new(vec![])),
             is_done: Arc::new(RwLock::new(false)),
+            processing_delay: None,
         }
     }
 
@@ -67,10 +72,14 @@ impl MockOuroborosTxSubmitPeerServer {
         info!("SERVER: init received, now we have agency");
 
         let mut acknowledge = 0u16;
-        let count = 3u16;
+        let count = 5u16;
 
         info!("SERVER: Current State: {:?}", tx_server.state());
         info!("SERVER: requesting TxIds (blocking=true)");
+
+        if let Some(delay) = self.processing_delay {
+            tokio::time::sleep(delay).await;
+        }
 
         // Request TxIds Blocking
         if matches!(tx_server.state(), State::Idle) {
@@ -118,7 +127,6 @@ impl MockOuroborosTxSubmitPeerServer {
                 panic!("SERVER: error requesting TxIds => {err:?}");
             }
         }
-
         // Receive TxIds for the non-blocking request
         let txids_reply = match tx_server.receive_next_reply().await {
             Ok(reply) => reply,
@@ -183,7 +191,7 @@ impl MockOuroborosTxSubmitPeerServer {
 
         info!("SERVER: done, closing connection");
         peer_server.abort().await;
-        *self.is_done.write().unwrap() = true;
+        *self.is_done.write().await = true;
         info!("SERVER: connection closed");
     }
 }
@@ -191,6 +199,16 @@ impl MockOuroborosTxSubmitPeerServer {
 #[cfg(test)]
 mod broadcast_tests {
 
+    use pallas::{
+        crypto::hash::Hash,
+        ledger::primitives::{
+            conway::{
+                PostAlonzoTransactionOutput, PseudoTransactionOutput, TransactionBody, Tx, Value,
+                WitnessSet,
+            },
+            Fragment, TransactionInput,
+        },
+    };
     use tracing::info;
 
     #[tokio::test]
@@ -205,22 +223,27 @@ mod broadcast_tests {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
 
         // 1. Spawn two mock servers - one fast and one slow
-        let fast_server = Arc::new(
+        let fast_server =
             crate::network::mock_ouroboros_tx_submit_server::MockOuroborosTxSubmitPeerServer::new(
                 "0.0.0.0:3001".to_string(),
                 2,
-            ),
-        );
-        let slow_server = Arc::new(
+            );
+        let mut slow_server =
             crate::network::mock_ouroboros_tx_submit_server::MockOuroborosTxSubmitPeerServer::new(
                 "0.0.0.0:3002".to_string(),
                 2,
-            ),
-        );
+            );
+
+        slow_server.processing_delay = Some(Duration::from_secs(5));
+
+        let fast_server = Arc::new(fast_server);
+        let slow_server = Arc::new(slow_server);
 
         // Initialize both servers
         fast_server.clone().init().await;
         slow_server.clone().init().await;
+
+        let tx_interval = Duration::from_millis(50);
 
         // Set up channels for both servers
         let (fast_sender, fast_receiver) =
@@ -235,7 +258,7 @@ mod broadcast_tests {
         slow_output.connect(slow_sender.clone());
 
         // Allow time for servers to start up
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
 
         // 2. Set up peer clients
         let mut fast_client = crate::network::peer::Peer::new("127.0.0.1:3001", 2);
@@ -257,49 +280,23 @@ mod broadcast_tests {
         let test_duration = Duration::from_secs(5);
         let start_time = Instant::now();
 
-        // Define different intervals for fast and slow senders
-        let fast_tx_interval = Duration::from_millis(50);
-        let slow_tx_interval = Duration::from_millis(150);
-
         // Generate sample transactions to send
-        let sample_txs = vec![
-            vec![1u8, 2, 3],
-            vec![4u8, 5, 6],
-            vec![7u8, 8, 9],
-            vec![10u8, 11, 12],
-            vec![13u8, 14, 15],
-            vec![16u8, 17, 18],
-            vec![19u8, 20, 21],
-            vec![22u8, 23, 24],
-        ];
+        let sample_txs = generate_sample_transactions();
 
-        // Spawn two tasks: one sending quickly, the other slowly
-        let fast_task = {
+        let tx_task = {
             let mut fast_output = fast_output;
-            let sample_txs = sample_txs.clone();
-            tokio::spawn(async move {
-                while start_time.elapsed() < test_duration {
-                    for tx in &sample_txs {
-                        let message = Message::from(tx.clone());
-                        fast_output.send(message).await.unwrap();
-                        tokio::time::sleep(fast_tx_interval).await;
-                        if start_time.elapsed() >= test_duration {
-                            break;
-                        }
-                    }
-                }
-            })
-        };
-
-        let slow_task = {
             let mut slow_output = slow_output;
             let sample_txs = sample_txs.clone();
             tokio::spawn(async move {
                 while start_time.elapsed() < test_duration {
                     for tx in &sample_txs {
                         let message = Message::from(tx.clone());
-                        slow_output.send(message).await.unwrap();
-                        tokio::time::sleep(slow_tx_interval).await;
+                        // Send the same transaction to both outputs at the same time
+                        fast_output.send(message.clone()).await.unwrap();
+                        slow_output.send(message.clone()).await.unwrap();
+
+                        // Use the same interval for both
+                        tokio::time::sleep(tx_interval).await;
                         if start_time.elapsed() >= test_duration {
                             break;
                         }
@@ -308,12 +305,11 @@ mod broadcast_tests {
             })
         };
 
-        // Wait for both tasks to complete
-        fast_task.await.unwrap();
-        slow_task.await.unwrap();
+        // Then wait for the single task
+        tx_task.await.unwrap();
 
         // Allow time for final processing
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         // 4. Count and compare processed transactions
         let fast_tx_count = fast_server.acknowledge_txs.lock().unwrap().len();
@@ -325,11 +321,102 @@ mod broadcast_tests {
         );
 
         // 5. Assert that the fast server processed more transactions
+        assert_eq!(sample_txs.len(), fast_tx_count);
+        assert_ne!(sample_txs.len(), slow_tx_count);
+
+        // After current assertions, add this code:
+        // Extract the transaction hashes for analysis
+        let fast_tx_hashes = fast_server.acknowledge_txs.lock().unwrap().clone();
+        let slow_tx_hashes = slow_server.acknowledge_txs.lock().unwrap().clone();
+
+        // Count transactions that were processed by fast but lagged in slow
+        let mut lagged_txs = 0;
+        for fast_hash in &fast_tx_hashes {
+            if !slow_tx_hashes.contains(fast_hash) {
+                lagged_txs += 1;
+            }
+        }
+
+        info!(
+            "Fast server processed all {} transactions. Slow server lagged on {} transactions.",
+            fast_tx_count, lagged_txs
+        );
+
+        // Assert that some transactions were lagged (but not all)
         assert!(
-        fast_tx_count > slow_tx_count,
-        "Fast server should process more transactions than slow server, but got: fast={}, slow={}",
-        fast_tx_count,
-        slow_tx_count
-    );
+            lagged_txs > 0,
+            "Expected some transactions to lag in slow server"
+        );
+        assert!(
+            slow_tx_count > 0,
+            "Slow server should process some transactions"
+        );
+    }
+
+    fn generate_sample_transactions() -> Vec<Vec<u8>> {
+        let mut sample_txs = Vec::new();
+
+        for i in 0..10 {
+            let input = TransactionInput {
+                transaction_id: Hash::<32>::from([i as u8; 32]),
+                index: i as u64,
+            };
+
+            let output = PseudoTransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+                address: vec![100 + i as u8; 28].into(),
+                value: Value::Coin((i as u64 + 1) * 1_000_000),
+                datum_option: None,
+                script_ref: None,
+            });
+
+            let tx = Tx {
+                transaction_body: TransactionBody {
+                    inputs: vec![input].into(),
+                    outputs: vec![output],
+                    fee: (i as u64 + 1) * 100_000,
+                    ttl: Some(1_000_000),
+                    validity_interval_start: None,
+                    certificates: None,
+                    withdrawals: None,
+                    auxiliary_data_hash: None,
+                    mint: None,
+                    script_data_hash: None,
+                    collateral: None,
+                    required_signers: None,
+                    network_id: None,
+                    collateral_return: None,
+                    total_collateral: None,
+                    reference_inputs: None,
+                    voting_procedures: None,
+                    proposal_procedures: None,
+                    treasury_value: None,
+                    donation: None,
+                },
+                transaction_witness_set: WitnessSet {
+                    vkeywitness: None,
+                    native_script: None,
+                    bootstrap_witness: None,
+                    plutus_v1_script: None,
+                    plutus_v2_script: None,
+                    plutus_v3_script: None,
+                    plutus_data: None,
+                    redeemer: None,
+                },
+                success: true,
+                auxiliary_data: None.into(),
+            };
+
+            // Serialize the transaction to CBOR bytes
+            match tx.encode_fragment() {
+                Ok(bytes) => sample_txs.push(bytes),
+                Err(e) => {
+                    // Log error but continue with other transactions
+                    tracing::error!("Failed to serialize transaction: {:?}", e);
+                    continue;
+                }
+            }
+        }
+
+        sample_txs
     }
 }
