@@ -283,30 +283,20 @@ mod broadcast_tests {
         // Generate sample transactions to send
         let sample_txs = generate_sample_transactions();
 
-        let tx_task = {
-            let mut fast_output = fast_output;
-            let mut slow_output = slow_output;
-            let sample_txs = sample_txs.clone();
-            tokio::spawn(async move {
-                while start_time.elapsed() < test_duration {
-                    for tx in &sample_txs {
-                        let message = Message::from(tx.clone());
-                        // Send the same transaction to both outputs at the same time
-                        fast_output.send(message.clone()).await.unwrap();
-                        slow_output.send(message.clone()).await.unwrap();
+        while start_time.elapsed() < test_duration {
+            for tx in &sample_txs {
+                let message = Message::from(tx.clone());
+                // Send the same transaction to both outputs at the same time
+                fast_output.send(message.clone()).await.unwrap();
+                slow_output.send(message.clone()).await.unwrap();
 
-                        // Use the same interval for both
-                        tokio::time::sleep(tx_interval).await;
-                        if start_time.elapsed() >= test_duration {
-                            break;
-                        }
-                    }
+                // Use the same interval for both
+                tokio::time::sleep(tx_interval).await;
+                if start_time.elapsed() >= test_duration {
+                    break;
                 }
-            })
-        };
-
-        // Then wait for the single task
-        tx_task.await.unwrap();
+            }
+        }
 
         // Allow time for final processing
         tokio::time::sleep(Duration::from_secs(3)).await;
