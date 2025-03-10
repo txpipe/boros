@@ -1,25 +1,37 @@
 use std::{sync::Arc, time::Duration};
 
-use gasket::framework::*;
+use gasket::{framework::*, messaging::{Message, OutputPort}};
 use tokio::time::sleep;
 use tracing::info;
 
+use super::CAP;
 use crate::{
+    ledger::u5c::U5cDataAdapter,
     priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
-use super::CAP;
 
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Vec<Transaction>", worker = "Worker")]
 pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
+    pub output: OutputPort<Vec<u8>>,
 }
 
 impl Stage {
-    pub fn new(storage: Arc<SqliteTransaction>, priority: Arc<Priority>) -> Self {
-        Self { storage, priority }
+    pub fn new(
+        storage: Arc<SqliteTransaction>,
+        priority: Arc<Priority>,
+        u5c_adapter: Arc<dyn U5cDataAdapter>,
+    ) -> Self {
+        Self {
+            storage,
+            priority,
+            u5c_adapter,
+            output: Default::default(),
+        }
     }
 }
 
@@ -37,7 +49,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<WorkSchedule<Vec<Transaction>>, WorkerError> {
         let transactions = stage
             .priority
-            .next(TransactionStatus::Pending, CAP)
+            .next(TransactionStatus::Validated, CAP)
             .await
             .or_retry()?;
 
@@ -54,18 +66,21 @@ impl gasket::framework::Worker<Stage> for Worker {
         unit: &Vec<Transaction>,
         stage: &mut Stage,
     ) -> Result<(), WorkerError> {
-        info!("validating {} transactions", unit.len());
+        for tx in unit {
+            let mut tx = tx.clone();
+            let message = Message::from(tx.raw.clone());
 
-        let transactions = unit
-            .iter()
-            .map(|tx| {
-                let mut tx = tx.clone();
-                tx.status = TransactionStatus::Validated;
-                tx
-            })
-            .collect();
+            if let Err(e) = stage.output.send(message).await {
+                info!("Failed to broadcast transaction: {}", e);
+            } else {
+                info!("Transaction {} broadcasted to receivers", tx.id);
 
-        stage.storage.update_batch(&transactions).await.or_retry()?;
+                let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
+                tx.status = TransactionStatus::InFlight;
+                tx.slot = Some(tip.0);
+                stage.storage.update(&tx).await.or_retry()?;
+            }
+        }
 
         Ok(())
     }
