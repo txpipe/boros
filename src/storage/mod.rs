@@ -39,7 +39,7 @@ impl Transaction {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionStatus {
     Pending,
     Validated,
