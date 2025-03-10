@@ -186,7 +186,9 @@ impl Peer {
                         info!(peer=%peer_addr, "Received TX IDs Blocking request: ack={}, req={}", ack, req);
 
                         let mempool_guard = mempool_arc.lock().await;
-                        mempool_guard.acknowledge(ack.into());
+                        if let Err(e) = mempool_guard.acknowledge(ack.into()) {
+                            error!(peer=%peer_addr, error=?e, "Error acknowledging transactions");
+                        }
                         drop(mempool_guard);
 
                         let raw_txs = Self::collect_transactions(&receiver, req.into())
@@ -219,7 +221,9 @@ impl Peer {
                         info!(peer=%peer_addr, "Received TX IDs Non-Blocking request: ack={}, req={}", ack, req);
 
                         let mempool_guard = mempool_arc.lock().await;
-                        mempool_guard.acknowledge(ack.into());
+                        if let Err(e) = mempool_guard.acknowledge(ack.into()) {
+                            error!(peer=%peer_addr, error=?e, "Error acknowledging transactions");
+                        }
                         drop(mempool_guard);
 
                         let timeout_duration = Duration::from_secs(1);
@@ -268,7 +272,14 @@ impl Peer {
                             let mempool_guard = mempool_arc.lock().await;
                             ids.iter()
                                 .filter_map(|x| {
-                                    mempool_guard.find_inflight(&Hash::from(x.1.as_slice()))
+                                    match mempool_guard.find_inflight(&Hash::from(x.1.as_slice())) {
+                                        Ok(Some(tx)) => Some(tx),
+                                        Ok(None) => None,
+                                        Err(e) => {
+                                            error!(peer=%peer_addr, error=?e, "Error finding transaction in mempool");
+                                            None
+                                        }
+                                    }
                                 })
                                 .map(|x| EraTxBody(x.era, x.bytes.clone()))
                                 .collect_vec()

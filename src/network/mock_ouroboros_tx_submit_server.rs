@@ -10,6 +10,8 @@ use pallas::network::{
     miniprotocols::txsubmission::{EraTxId, Reply, State},
 };
 
+// This struct and its implementations are used in tests
+#[allow(dead_code)]
 pub struct MockOuroborosTxSubmitPeerServer {
     pub socket_addr: String,
     pub network_magic: u64,
@@ -18,6 +20,7 @@ pub struct MockOuroborosTxSubmitPeerServer {
     pub processing_delay: Option<Duration>,
 }
 
+#[allow(dead_code)]
 impl MockOuroborosTxSubmitPeerServer {
     pub fn new(socket_addr: String, network_magic: u64) -> Self {
         Self {
