@@ -13,13 +13,13 @@ type TxHash = Hash<32>;
 #[derive(Debug, Error)]
 pub enum MempoolError {
     #[error("traverse error: {0}")]
-    TraverseError(#[from] pallas::ledger::traverse::Error),
+    Traverse(#[from] pallas::ledger::traverse::Error),
 
     #[error("decode error: {0}")]
-    DecodeError(#[from] pallas::codec::minicbor::decode::Error),
+    Decode(#[from] pallas::codec::minicbor::decode::Error),
     
     #[error("lock error: {0}")]
-    LockError(String),
+    Lock(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -74,7 +74,7 @@ impl Mempool {
 
     fn receive(&self, tx: Tx) -> Result<(), MempoolError> {
         let mut state = self.mempool.write()
-            .map_err(|e| MempoolError::LockError(format!("Failed to acquire write lock: {}", e)))?;
+            .map_err(|e| MempoolError::Lock(format!("Failed to acquire write lock: {}", e)))?;
 
         state.inflight.push(tx.clone());
         self.notify(TxStage::Inflight, tx);
@@ -110,7 +110,7 @@ impl Mempool {
         debug!(n = count, "acknowledging txs");
 
         let mut state = self.mempool.write()
-            .map_err(|e| MempoolError::LockError(format!("Failed to acquire write lock: {}", e)))?;
+            .map_err(|e| MempoolError::Lock(format!("Failed to acquire write lock: {}", e)))?;
 
         let selected = state.inflight.drain(..count).collect_vec();
 
@@ -130,7 +130,7 @@ impl Mempool {
 
     pub fn find_inflight(&self, tx_hash: &TxHash) -> Result<Option<Tx>, MempoolError> {
         let state = self.mempool.read()
-            .map_err(|e| MempoolError::LockError(format!("Failed to acquire read lock: {}", e)))?;
+            .map_err(|e| MempoolError::Lock(format!("Failed to acquire read lock: {}", e)))?;
             
         Ok(state.inflight.iter().find(|x| x.hash.eq(tx_hash)).cloned())
     }
