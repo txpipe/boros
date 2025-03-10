@@ -51,7 +51,7 @@ impl PeerManager {
                 .init()
                 .await
                 .map_err(PeerManagerError::PeerInitialization)?;
-            
+
             *peer = Some(new_peer);
         }
 
@@ -65,34 +65,30 @@ impl PeerManager {
         let mut peers = self.peers.write().await;
         let mut rng = rand::rng();
 
-        let mut candidates: Vec<&mut Peer> = peers
-            .iter_mut()
-            .filter_map(|(_, peer_opt)| {
-                peer_opt
-                    .as_mut()
-                    .filter(|peer| peer.is_alive && peer.is_peer_sharing_enabled)
+        let mut candidates: Vec<_> = peers
+            .values_mut()
+            .filter_map(|slot| slot.as_mut())
+            .filter(|peer| peer.is_alive && peer.is_peer_sharing_enabled)
+            .collect();
+
+        let Some(peer) = candidates.choose_mut(&mut rng) else {
+            return Ok(None);
+        };
+
+        let discovered_peers = peer
+            .discover_peers(peers_per_request)
+            .await
+            .map_err(PeerManagerError::PeerDiscovery)?;
+
+        let peer_addrs: Vec<_> = discovered_peers
+            .into_iter()
+            .filter_map(|addr| match addr {
+                PeerAddress::V4(ip, port) => Some(format!("{ip}:{port}")),
+                _ => None,
             })
             .collect();
 
-        if let Some(peer_ref) = candidates.as_mut_slice().choose_mut(&mut rng) {
-            let sub_peers = (*peer_ref)
-                .discover_peers(peers_per_request)
-                .await
-                .map_err(PeerManagerError::PeerDiscovery)?;
-
-            let sub_peers: Vec<String> = sub_peers
-                .into_iter()
-                .filter(|addr| matches!(addr, PeerAddress::V4(_, _)))
-                .map(|addr| match addr {
-                    PeerAddress::V4(ip, port) => format!("{}:{}", ip, port),
-                    _ => todo!(),
-                })
-                .collect();
-
-            return Ok(sub_peers.choose(&mut rng).cloned());
-        }
-
-        Ok(None)
+        Ok(peer_addrs.choose(&mut rng).cloned())
     }
 
     /// Checks if a peer already exists.
@@ -108,14 +104,27 @@ impl PeerManager {
             return;
         }
 
-        let mut new_peer = Peer::new(peer_addr, self.network_magic);
         let timeout_duration = Duration::from_secs(5);
+        let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
+        // Query the peer-sharing mode with a timeout.
+        match timeout(timeout_duration, new_peer.query_peer_sharing_mode()).await {
+            Ok(Ok(sharing_mode)) => {
+                new_peer.is_peer_sharing_enabled = sharing_mode;
+            }
+            Ok(Err(e)) => {
+                error!("Peer {peer_addr} sharing query error: {e:?}");
+            }
+            Err(_) => {
+                error!("Peer {peer_addr} sharing query timed out");
+            }
+        }
+
+        // Peer initialization with a timeout.
         match timeout(timeout_duration, new_peer.init()).await {
             Ok(Ok(())) => {
                 info!("Peer {} connected successfully", peer_addr);
                 let mut peers = self.peers.write().await;
-                // Convert the &str to a String if necessary.
                 peers.insert(peer_addr.to_string(), Some(new_peer));
             }
             Ok(Err(e)) => {
@@ -130,11 +139,9 @@ impl PeerManager {
     pub async fn connected_peers_count(&self) -> usize {
         let peers = self.peers.read().await;
         peers
-            .iter()
-            .filter(|(_, peer)| match *peer {
-                Some(peer) => peer.is_alive,
-                None => false,
-            })
+            .values()
+            .filter_map(|maybe_peer| maybe_peer.as_ref())
+            .filter(|peer| peer.is_alive)
             .count()
     }
 
