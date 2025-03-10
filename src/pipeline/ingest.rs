@@ -4,11 +4,11 @@ use gasket::framework::*;
 use tokio::time::sleep;
 use tracing::info;
 
+use super::CAP;
 use crate::{
-    priority::Priority,
+    queue::priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
-use super::CAP;
 
 #[derive(Stage)]
 #[stage(name = "ingest", unit = "Vec<Transaction>", worker = "Worker")]
