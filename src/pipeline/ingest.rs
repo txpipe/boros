@@ -47,7 +47,7 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<WorkSchedule<Vec<Transaction>>, WorkerError> {
         let transactions = stage
             .priority
-            .next(TransactionStatus::Validated, CAP)
+            .next(TransactionStatus::Pending, CAP)
             .await
             .or_retry()?;
 
