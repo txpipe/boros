@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 
+use gasket::messaging::InputPort;
 use itertools::Itertools;
 use pallas::crypto::hash::Hash;
 use pallas::network::miniprotocols::{
@@ -15,7 +17,8 @@ use pallas::network::{facades::PeerClient, miniprotocols::txsubmission::TxIdAndS
 use thiserror::Error;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task;
-use tracing::{error, info};
+use tokio::time::timeout;
+use tracing::{error, info, warn};
 
 use super::mempool::{self, Mempool, MempoolError};
 
@@ -40,7 +43,7 @@ pub struct Peer {
     tx_submit_client: Arc<Mutex<Option<TxSubmitClient>>>,
     peer_sharing_client: Arc<Mutex<Option<PeerSharingClient>>>,
     network_magic: u64,
-    unfulfilled_request: Arc<RwLock<Option<usize>>>,
+    pub input: Arc<RwLock<InputPort<Vec<u8>>>>,
     pub peer_addr: String,
     pub is_peer_sharing_enabled: bool,
     pub is_alive: bool,
@@ -55,7 +58,7 @@ impl Peer {
             peer_sharing_client: Arc::new(Mutex::new(None)),
             peer_addr: peer_addr.to_string(),
             network_magic,
-            unfulfilled_request: Arc::new(RwLock::new(None)),
+            input: Default::default(),
             is_peer_sharing_enabled: false,
             is_alive: false,
         }
@@ -102,27 +105,25 @@ impl Peer {
             }
         };
 
-        if !peer_sharing_client.has_agency() {
-            info!(peer = %self.peer_addr, "Agency not available; disabling peer sharing");
-            self.is_peer_sharing_enabled = false;
-            return Ok(vec![]);
-        }
-
         peer_sharing_client
             .send_share_request(desired_peers)
             .await
             .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to send share request: {e:?}"))
+                PeerError::PeerDiscovery(format!("Failed to send share request: {:?}", e))
             })?;
 
-        let discovered_peers = peer_sharing_client
+        let mut discovered = vec![];
+        if let Ok(peers) = peer_sharing_client
             .recv_peer_addresses()
             .await
             .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {e:?}"))
-            })?;
+                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {:?}", e))
+            })
+        {
+            discovered.extend(peers);
+        }
 
-        Ok(discovered_peers)
+        Ok(discovered)
     }
 
     pub async fn query_peer_sharing_mode(&self) -> Result<bool, PeerError> {
@@ -132,45 +133,31 @@ impl Peer {
                 PeerError::Initialization(format!("Failed to query peer sharing mode: {:?}", e))
             })?;
 
-        Ok(version_table
+        let version_data = version_table
             .values
             .iter()
             .max_by_key(|(version, _)| *version)
-            .map(|(_, data)| data.peer_sharing == Some(1))
-            .unwrap_or(false))
+            .map(|(_, data)| data);
+
+        if let Some(data) = version_data {
+            if Some(1) == data.peer_sharing {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     fn start_background_task(&self) {
         let plexer_client = Arc::clone(&self.plexer_client);
         let tx_submit_client = Arc::clone(&self.tx_submit_client);
         let mempool_arc = Arc::clone(&self.mempool);
-        let unfulfilled_request_arc = Arc::clone(&self.unfulfilled_request);
         let peer_addr = self.peer_addr.clone();
+        let receiver = Arc::clone(&self.input);
 
         task::spawn(async move {
             loop {
-                // Check if there's any unfulfilled requests
-                let outstanding_request = *unfulfilled_request_arc.read().await;
-
-                // if there is an unfulfilled request, process it
-                if let Some(request) = outstanding_request {
-                    if let Err(err) = Self::process_unfulfilled(
-                        request,
-                        &peer_addr,
-                        &mempool_arc,
-                        &tx_submit_client,
-                        &unfulfilled_request_arc,
-                    )
-                    .await
-                    {
-                        error!(peer=%peer_addr, error=?err, "Error processing unfulfilled request");
-                        break;
-                    }
-
-                    continue;
-                }
-
-                // Otherwise, wait for the next request
+                // Wait for the next request
                 let next_req = {
                     let mut client_guard = tx_submit_client.lock().await;
                     let tx_submit_client_ref = match client_guard.as_mut() {
@@ -197,9 +184,28 @@ impl Peer {
                 match request {
                     Request::TxIds(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Blocking request: ack={}, req={}", ack, req);
+
                         let mempool_guard = mempool_arc.lock().await;
+                        if let Err(e) = mempool_guard.acknowledge(ack.into()) {
+                            error!(peer=%peer_addr, error=?e, "Error acknowledging transactions");
+                        }
+                        drop(mempool_guard);
+
+                        let raw_txs = Self::collect_transactions(&receiver, req.into())
+                            .await
+                            .unwrap_or_default();
+
+                        let mempool_guard = mempool_arc.lock().await;
+                        let txs = raw_txs
+                            .into_iter()
+                            .filter_map(|raw_tx| mempool_guard.receive_raw(&raw_tx).ok())
+                            .collect_vec();
+                        drop(mempool_guard);
+
+                        info!(peer=%peer_addr, "Requested {}; received {}", req, txs.len());
+
                         let mut client_guard = tx_submit_client.lock().await;
-                        let tx_submit_client_ref = match client_guard.as_mut() {
+                        let client = match client_guard.as_mut() {
                             Some(c) => c,
                             None => {
                                 error!(peer=%peer_addr, "No client available; breaking");
@@ -207,22 +213,42 @@ impl Peer {
                             }
                         };
 
-                        Self::reply_txs(
-                            &mempool_guard,
-                            tx_submit_client_ref,
-                            ack as usize,
-                            req as usize,
-                            &unfulfilled_request_arc,
-                        )
-                        .await
-                        .ok();
+                        if let Err(err) = Self::propagate_txs(client, txs).await {
+                            error!(peer=%peer_addr, error=?err, "Error propagating TXs");
+                        }
                     }
                     Request::TxIdsNonBlocking(ack, req) => {
                         info!(peer=%peer_addr, "Received TX IDs Non-Blocking request: ack={}, req={}", ack, req);
-                        let mempool_guard = mempool_arc.lock().await;
-                        mempool_guard.acknowledge(ack as usize);
 
-                        let txs = mempool_guard.request(req as usize);
+                        let mempool_guard = mempool_arc.lock().await;
+                        if let Err(e) = mempool_guard.acknowledge(ack.into()) {
+                            error!(peer=%peer_addr, error=?e, "Error acknowledging transactions");
+                        }
+                        drop(mempool_guard);
+
+                        let timeout_duration = Duration::from_secs(1);
+                        let raw_txs = match timeout(
+                            timeout_duration,
+                            Self::collect_transactions(&receiver, req.into()),
+                        )
+                        .await
+                        {
+                            Ok(Ok(txs)) => txs,
+                            Ok(Err(e)) => {
+                                error!(peer=%peer_addr, error=?e, "Failed to collect transactions");
+                                vec![]
+                            }
+                            Err(_) => {
+                                info!(peer=%peer_addr, "Timeout collecting transactions");
+                                vec![]
+                            }
+                        };
+
+                        let mempool_guard = mempool_arc.lock().await;
+                        let txs = raw_txs
+                            .into_iter()
+                            .filter_map(|raw_tx| mempool_guard.receive_raw(&raw_tx).ok())
+                            .collect_vec();
                         drop(mempool_guard);
 
                         let mut client_guard = tx_submit_client.lock().await;
@@ -234,7 +260,9 @@ impl Peer {
                             }
                         };
 
-                        Self::propagate_txs(tx_submit_client_ref, txs).await.ok();
+                        if let Err(err) = Self::propagate_txs(tx_submit_client_ref, txs).await {
+                            error!(peer=%peer_addr, error=?err, "Error propagating TXs");
+                        }
                     }
                     Request::Txs(ids) => {
                         let ids: Vec<_> = ids.iter().map(|x| (x.0, x.1.clone())).collect();
@@ -244,7 +272,14 @@ impl Peer {
                             let mempool_guard = mempool_arc.lock().await;
                             ids.iter()
                                 .filter_map(|x| {
-                                    mempool_guard.find_inflight(&Hash::from(x.1.as_slice()))
+                                    match mempool_guard.find_inflight(&Hash::from(x.1.as_slice())) {
+                                        Ok(Some(tx)) => Some(tx),
+                                        Ok(None) => None,
+                                        Err(e) => {
+                                            error!(peer=%peer_addr, error=?e, "Error finding transaction in mempool");
+                                            None
+                                        }
+                                    }
                                 })
                                 .map(|x| EraTxBody(x.era, x.bytes.clone()))
                                 .collect_vec()
@@ -275,66 +310,6 @@ impl Peer {
         });
     }
 
-    pub async fn add_tx(&self, tx: Vec<u8>) {
-        let mempool = self.mempool.lock().await;
-        mempool.receive_raw(&tx).unwrap();
-    }
-
-    async fn process_unfulfilled(
-        request: usize,
-        peer_addr: &str,
-        mempool: &Arc<Mutex<Mempool>>,
-        tx_submit_client: &Arc<Mutex<Option<TxSubmitClient>>>,
-        unfulfilled_request: &Arc<RwLock<Option<usize>>>,
-    ) -> Result<(), PeerError> {
-        let available = mempool.lock().await.pending_total();
-
-        if available == 0 {
-            tokio::time::sleep(Duration::from_secs(10)).await;
-            return Ok(());
-        }
-
-        let mempool_guard = mempool.lock().await;
-        let mut client_guard = tx_submit_client.lock().await;
-
-        let tx_submit_client_ref = client_guard.as_mut().ok_or_else(|| {
-            error!(peer=%peer_addr, "No TxSubmitClient available");
-            PeerError::TxSubmission("No client available".into())
-        })?;
-
-        Self::reply_txs(
-            &mempool_guard,
-            tx_submit_client_ref,
-            0,
-            request,
-            unfulfilled_request,
-        )
-        .await
-    }
-
-    async fn reply_txs(
-        mempool: &Mempool,
-        tx_submit_client: &mut TxSubmitClient,
-        ack: usize,
-        req: usize,
-        unfulfilled_request: &Arc<RwLock<Option<usize>>>,
-    ) -> Result<(), PeerError> {
-        mempool.acknowledge(ack);
-
-        let available = mempool.pending_total();
-        if available > 0 {
-            let txs = mempool.request(req);
-            Self::propagate_txs(tx_submit_client, txs).await?;
-            let mut unfulfilled = unfulfilled_request.write().await;
-            *unfulfilled = None;
-        } else {
-            let mut unfulfilled = unfulfilled_request.write().await;
-            *unfulfilled = Some(req);
-        }
-
-        Ok(())
-    }
-
     async fn propagate_txs(
         tx_submit_client: &mut TxSubmitClient,
         txs: Vec<mempool::Tx>,
@@ -349,5 +324,52 @@ impl Peer {
         })?;
 
         Ok(())
+    }
+
+    async fn collect_transactions(
+        receiver: &Arc<RwLock<InputPort<Vec<u8>>>>,
+        req: usize,
+    ) -> Result<Vec<Vec<u8>>, PeerError> {
+        let mut txs = vec![];
+        let timeout_duration = Duration::from_millis(500);
+        let mut remaining = req;
+
+        while remaining > 0 {
+            let tx_result = timeout(timeout_duration, async {
+                let mut receiver_guard = receiver.write().await;
+                receiver_guard.recv().await
+            })
+            .await;
+
+            match tx_result {
+                Ok(Ok(received_msg)) => {
+                    let tx_raw = received_msg.payload;
+                    txs.push(tx_raw);
+                    remaining -= 1;
+                }
+                Ok(Err(_)) => {
+                    warn!("Transaction receive error: input port lagged; skipping");
+                    continue;
+                }
+                Err(_) => {
+                    if txs.is_empty() {
+                        let received_msg = {
+                            let mut receiver_guard = receiver.write().await;
+                            receiver_guard.recv().await
+                        }
+                        .map_err(|e| {
+                            PeerError::TxSubmission(format!("Failed to receive message: {:?}", e))
+                        })?;
+
+                        let tx_raw = received_msg.payload;
+                        txs.push(tx_raw);
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        Ok(txs)
     }
 }
