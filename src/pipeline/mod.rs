@@ -6,7 +6,9 @@ use crate::{
     ledger::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
         u5c::{Point, U5cDataAdapterImpl},
-    }, network::peer_manager::PeerManager, priority::Priority, storage::{
+    }, network::peer_manager::PeerManager,
+    queue::priority::Priority,
+    storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
     }, Config

@@ -6,9 +6,7 @@ use tracing::info;
 
 use super::CAP;
 use crate::{
-    ledger::u5c::U5cDataAdapter,
-    priority::Priority,
-    storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
+    ledger::u5c::U5cDataAdapter, queue::priority::Priority, storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus}
 };
 
 #[derive(Stage)]

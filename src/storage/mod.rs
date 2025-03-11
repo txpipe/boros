@@ -3,7 +3,7 @@ use std::{fmt::Display, str::FromStr};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::priority::DEFAULT_QUEUE;
+use crate::queue::DEFAULT_QUEUE;
 
 pub mod sqlite;
 
@@ -28,8 +28,7 @@ impl Transaction {
         Self {
             id,
             raw,
-            // status: TransactionStatus::Pending,
-            status: TransactionStatus::Validated,
+            status: TransactionStatus::Pending,
             queue: DEFAULT_QUEUE.into(),
             slot: None,
             dependencies: None,

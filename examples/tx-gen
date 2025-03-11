@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Preview network
 NETWORK_MAGIC=2
 BOROS_RPC="0.0.0.0:50052"
+CHAINED_QUEUE=$1
 
 if [ ! -e "./cardano-cli" ]; then
   echo "make sure to have cardano-cli in the tx-gen path"
@@ -31,7 +31,7 @@ echo "address: $ADDRESS"
 UTXO=$(./cardano-cli query utxo --address $ADDRESS --testnet-magic $NETWORK_MAGIC --output-json | jq -r 'to_entries | .[0].key')
 
 if [ -z "$UTXO" ] || [ "$UTXO" == "null" ]; then
-    echo "no balance yet. For testnet, request fund in the faucet"
+    echo "no balance yet. Request fund in the faucet"
     exit 1
 fi
 
@@ -45,5 +45,12 @@ CBOR=$(cat ./tx.signed | jq -r '.cborHex')
 
 echo "signed tx cbor: $CBOR"
 
-# grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\"}]}" $BOROS_RPC utxorpc.v1alpha.submit.SubmitService.SubmitTx
-grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\"}]}" $BOROS_RPC boros.v1.submit.SubmitService.SubmitTx
+if [ -z "$CHAINED_QUEUE" ]; then
+    grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\"}]}" $BOROS_RPC boros.v1.submit.SubmitService.SubmitTx
+else
+    echo "locking the state"
+    LOCK_TOKEN=$(grpcurl -plaintext -d "{\"queue\":  \"$CHAINED_QUEUE\" }" $BOROS_RPC boros.v1.submit.SubmitService.LockState | jq -r '.lockToken')
+
+    echo "submitting transaction"
+    grpcurl -plaintext -d "{\"tx\": [{\"raw\": \"$(echo $CBOR | xxd -r -p | base64 | tr -d '\n')\", \"queue\": \"$CHAINED_QUEUE\", \"lock_token\": \"$LOCK_TOKEN\"}]}" $BOROS_RPC boros.v1.submit.SubmitService.SubmitTx
+fi
