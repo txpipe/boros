@@ -148,16 +148,8 @@ impl gasket::framework::Worker<Stage> for Worker {
             .await
             .or_retry()?;
 
-        let mut validated_txs = vec![];
-        for tx in transactions {
-            let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
-            stage.validate_tx(&metx).await.or_retry()?;
-            stage.evaluate_tx(&metx).await.or_retry()?;
-            validated_txs.push(tx);
-        }
-
-        if !validated_txs.is_empty() {
-            return Ok(WorkSchedule::Unit(validated_txs));
+        if !transactions.is_empty() {
+            return Ok(WorkSchedule::Unit(transactions));
         }
 
         sleep(Duration::from_secs(1)).await;
@@ -171,6 +163,11 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<(), WorkerError> {
         for tx in unit {
             let mut tx = tx.clone();
+            let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
+
+            stage.validate_tx(&metx).await.or_retry()?;
+            stage.evaluate_tx(&metx).await.or_retry()?;
+
             let message = Message::from(tx.raw.clone());
 
             if let Err(e) = stage.output.send(message).await {
