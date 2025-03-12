@@ -149,11 +149,10 @@ impl gasket::framework::Worker<Stage> for Worker {
             .or_retry()?;
 
         let mut validated_txs = vec![];
-        for mut tx in transactions {
+        for tx in transactions {
             let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
             stage.validate_tx(&metx).await.or_retry()?;
             stage.evaluate_tx(&metx).await.or_retry()?;
-            tx.status = TransactionStatus::Validated;
             validated_txs.push(tx);
         }
 
