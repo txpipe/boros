@@ -21,6 +21,7 @@ use super::CAP;
 use crate::{
     ledger::u5c::U5cDataAdapter,
     priority::Priority,
+    queue::priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
 

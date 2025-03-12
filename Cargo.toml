@@ -11,6 +11,8 @@ readme = "README.md"
 authors = ["Santiago Carmuega <santiago@carmuega.me>"]
 
 [dependencies]
+spec = { version = "0.1.0", path = "./spec/gen/rust" }
+
 anyhow = "1.0.95"
 async-trait = "0.1.85"
 chrono = "0.4.39"

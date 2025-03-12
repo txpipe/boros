@@ -1,0 +1,18 @@
+[package]
+name = "spec"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytes = "^1.10"
+pbjson = "^0.7"
+pbjson-types = "^0.7"
+prost = "^0.13"
+serde = "^1.0"
+tonic = "^0.12"
+
+[features]
+default = []
+## @@protoc_insertion_point(features)

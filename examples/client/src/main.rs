@@ -1,5 +1,6 @@
 use tonic::transport::{Channel, Uri};
-use utxorpc::spec::submit;
+//use utxorpc::spec::submit;
+use spec::boros::v1::submit;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,9 +13,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bytes = hex::decode(tx)?;
 
+    //let request = tonic::Request::new(submit::SubmitTxRequest {
+    //    tx: vec![submit::AnyChainTx {
+    //        r#type: Some(submit::any_chain_tx::Type::Raw(bytes.into())),
+    //    }],
+    //});
+
     let request = tonic::Request::new(submit::SubmitTxRequest {
-        tx: vec![submit::AnyChainTx {
-            r#type: Some(submit::any_chain_tx::Type::Raw(bytes.into())),
+        tx: vec![submit::Tx {
+            raw: bytes.into(),
+            ..Default::default()
         }],
     });
 

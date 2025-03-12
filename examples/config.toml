@@ -26,4 +26,4 @@ uri = "https://mainnet.utxorpc-v0.demeter.run"
 [[queues]]
 name = "banana"
 weight = 2
-
+chained = false
