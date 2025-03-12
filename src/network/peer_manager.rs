@@ -1,8 +1,11 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
+use gasket::messaging::{tokio::ChannelRecvAdapter, InputPort};
 use pallas::network::miniprotocols::peersharing::PeerAddress;
 use rand::seq::{IndexedMutRandom, IndexedRandom};
+use serde::Deserialize;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
@@ -22,10 +25,15 @@ pub enum PeerManagerError {
 pub struct PeerManager {
     network_magic: u64,
     peers: RwLock<HashMap<String, Option<Peer>>>,
+    receiver: ChannelRecvAdapter<Vec<u8>>,
 }
 
 impl PeerManager {
-    pub fn new(network_magic: u64, peer_addresses: Vec<String>) -> Self {
+    pub fn new(
+        network_magic: u64,
+        peer_addresses: Vec<String>,
+        receiver: ChannelRecvAdapter<Vec<u8>>,
+    ) -> Self {
         let peers = peer_addresses
             .into_iter()
             .map(|peer_addr| (peer_addr, None))
@@ -34,13 +42,18 @@ impl PeerManager {
         Self {
             network_magic,
             peers: RwLock::new(peers),
+            receiver,
         }
     }
 
-    pub async fn init(&mut self) -> Result<(), PeerManagerError> {
+    pub async fn init(&self) -> Result<(), PeerManagerError> {
         let mut peers = self.peers.write().await;
         for (peer_addr, peer) in peers.iter_mut() {
             let mut new_peer = Peer::new(peer_addr, self.network_magic);
+
+            let mut input = InputPort::<Vec<u8>>::default();
+            input.connect(self.receiver.clone());
+            new_peer.input = Arc::new(RwLock::new(input));
 
             new_peer.is_peer_sharing_enabled = new_peer
                 .query_peer_sharing_mode()
@@ -65,30 +78,34 @@ impl PeerManager {
         let mut peers = self.peers.write().await;
         let mut rng = rand::rng();
 
-        let mut candidates: Vec<_> = peers
-            .values_mut()
-            .filter_map(|slot| slot.as_mut())
-            .filter(|peer| peer.is_alive && peer.is_peer_sharing_enabled)
-            .collect();
-
-        let Some(peer) = candidates.choose_mut(&mut rng) else {
-            return Ok(None);
-        };
-
-        let discovered_peers = peer
-            .discover_peers(peers_per_request)
-            .await
-            .map_err(PeerManagerError::PeerDiscovery)?;
-
-        let peer_addrs: Vec<_> = discovered_peers
-            .into_iter()
-            .filter_map(|addr| match addr {
-                PeerAddress::V4(ip, port) => Some(format!("{ip}:{port}")),
-                _ => None,
+        let mut candidates: Vec<&mut Peer> = peers
+            .iter_mut()
+            .filter_map(|(_, peer_opt)| {
+                peer_opt
+                    .as_mut()
+                    .filter(|peer| peer.is_alive && peer.is_peer_sharing_enabled)
             })
             .collect();
 
-        Ok(peer_addrs.choose(&mut rng).cloned())
+        if let Some(peer_ref) = candidates.as_mut_slice().choose_mut(&mut rng) {
+            let sub_peers = (*peer_ref)
+                .discover_peers(peers_per_request)
+                .await
+                .map_err(PeerManagerError::PeerDiscovery)?;
+
+            let sub_peers: Vec<String> = sub_peers
+                .into_iter()
+                .filter(|addr| matches!(addr, PeerAddress::V4(_, _)))
+                .map(|addr| match addr {
+                    PeerAddress::V4(ip, port) => format!("{}:{}", ip, port),
+                    _ => todo!(),
+                })
+                .collect();
+
+            return Ok(sub_peers.choose(&mut rng).cloned());
+        }
+
+        Ok(None)
     }
 
     /// Checks if a peer already exists.
@@ -104,27 +121,19 @@ impl PeerManager {
             return;
         }
 
-        let timeout_duration = Duration::from_secs(5);
         let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
-        // Query the peer-sharing mode with a timeout.
-        match timeout(timeout_duration, new_peer.query_peer_sharing_mode()).await {
-            Ok(Ok(sharing_mode)) => {
-                new_peer.is_peer_sharing_enabled = sharing_mode;
-            }
-            Ok(Err(e)) => {
-                error!("Peer {peer_addr} sharing query error: {e:?}");
-            }
-            Err(_) => {
-                error!("Peer {peer_addr} sharing query timed out");
-            }
-        }
+        let mut input = InputPort::<Vec<u8>>::default();
+        input.connect(self.receiver.clone());
+        new_peer.input = Arc::new(RwLock::new(input));
 
-        // Peer initialization with a timeout.
+        let timeout_duration = Duration::from_secs(5);
+
         match timeout(timeout_duration, new_peer.init()).await {
             Ok(Ok(())) => {
                 info!("Peer {} connected successfully", peer_addr);
                 let mut peers = self.peers.write().await;
+                // Convert the &str to a String if necessary.
                 peers.insert(peer_addr.to_string(), Some(new_peer));
             }
             Ok(Err(e)) => {
@@ -139,18 +148,18 @@ impl PeerManager {
     pub async fn connected_peers_count(&self) -> usize {
         let peers = self.peers.read().await;
         peers
-            .values()
-            .filter_map(|maybe_peer| maybe_peer.as_ref())
-            .filter(|peer| peer.is_alive)
+            .iter()
+            .filter(|(_, peer)| match *peer {
+                Some(peer) => peer.is_alive,
+                None => false,
+            })
             .count()
     }
+}
 
-    pub async fn add_tx(&self, tx: Vec<u8>) {
-        let peers = self.peers.read().await;
-        for (_, peer) in peers.iter() {
-            if let Some(peer) = peer {
-                peer.add_tx(tx.clone()).await;
-            }
-        }
-    }
+#[derive(Deserialize, Clone)]
+pub struct PeerManagerConfig {
+    pub peers: Vec<String>,
+    pub desired_peer_count: u8,
+    pub peers_per_request: u8,
 }

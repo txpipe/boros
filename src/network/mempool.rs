@@ -6,17 +6,20 @@ use std::{
 };
 use thiserror::Error;
 use tokio::sync::broadcast;
-use tracing::debug;
+use tracing::{debug, error};
 
 type TxHash = Hash<32>;
 
 #[derive(Debug, Error)]
 pub enum MempoolError {
     #[error("traverse error: {0}")]
-    TraverseError(#[from] pallas::ledger::traverse::Error),
+    Traverse(#[from] pallas::ledger::traverse::Error),
 
     #[error("decode error: {0}")]
-    DecodeError(#[from] pallas::codec::minicbor::decode::Error),
+    Decode(#[from] pallas::codec::minicbor::decode::Error),
+    
+    #[error("lock error: {0}")]
+    Lock(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -30,7 +33,6 @@ pub struct Tx {
 
 #[derive(Clone)]
 pub enum TxStage {
-    Pending,
     Inflight,
     Acknowledged,
 }
@@ -45,7 +47,6 @@ pub struct Event {
 
 #[derive(Default)]
 struct MempoolState {
-    pending: Vec<Tx>,
     inflight: Vec<Tx>,
     acknowledged: HashMap<TxHash, Tx>,
 }
@@ -71,21 +72,23 @@ impl Mempool {
         }
     }
 
-    fn receive(&self, tx: Tx) {
-        let mut state = self.mempool.write().unwrap();
+    fn receive(&self, tx: Tx) -> Result<(), MempoolError> {
+        let mut state = self.mempool.write()
+            .map_err(|e| MempoolError::Lock(format!("Failed to acquire write lock: {}", e)))?;
 
-        state.pending.push(tx.clone());
-        self.notify(TxStage::Pending, tx);
+        state.inflight.push(tx.clone());
+        self.notify(TxStage::Inflight, tx);
 
         debug!(
-            pending = state.pending.len(),
             inflight = state.inflight.len(),
             acknowledged = state.acknowledged.len(),
             "mempool state changed"
         );
+        
+        Ok(())
     }
 
-    pub fn receive_raw(&self, cbor: &[u8]) -> Result<TxHash, MempoolError> {
+    pub fn receive_raw(&self, cbor: &[u8]) -> Result<Tx, MempoolError> {
         let tx = MultiEraTx::decode(cbor)?;
 
         let hash = tx.hash();
@@ -98,40 +101,16 @@ impl Mempool {
             confirmed: false,
         };
 
-        self.receive(tx);
+        self.receive(tx.clone())?;
 
-        Ok(hash)
+        Ok(tx)
     }
 
-    pub fn request(&self, desired: usize) -> Vec<Tx> {
-        let available = self.pending_total();
-        self.request_exact(std::cmp::min(desired, available))
-    }
-
-    pub fn request_exact(&self, count: usize) -> Vec<Tx> {
-        let mut state = self.mempool.write().unwrap();
-
-        let selected = state.pending.drain(..count).collect_vec();
-
-        for tx in selected.iter() {
-            state.inflight.push(tx.clone());
-            self.notify(TxStage::Inflight, tx.clone());
-        }
-
-        debug!(
-            pending = state.pending.len(),
-            inflight = state.inflight.len(),
-            acknowledged = state.acknowledged.len(),
-            "mempool state changed"
-        );
-
-        selected
-    }
-
-    pub fn acknowledge(&self, count: usize) {
+    pub fn acknowledge(&self, count: usize) -> Result<(), MempoolError> {
         debug!(n = count, "acknowledging txs");
 
-        let mut state = self.mempool.write().unwrap();
+        let mut state = self.mempool.write()
+            .map_err(|e| MempoolError::Lock(format!("Failed to acquire write lock: {}", e)))?;
 
         let selected = state.inflight.drain(..count).collect_vec();
 
@@ -141,20 +120,18 @@ impl Mempool {
         }
 
         debug!(
-            pending = state.pending.len(),
             inflight = state.inflight.len(),
             acknowledged = state.acknowledged.len(),
             "mempool state changed"
         );
+        
+        Ok(())
     }
 
-    pub fn find_inflight(&self, tx_hash: &TxHash) -> Option<Tx> {
-        let state = self.mempool.read().unwrap();
-        state.inflight.iter().find(|x| x.hash.eq(tx_hash)).cloned()
-    }
-
-    pub fn pending_total(&self) -> usize {
-        let state = self.mempool.read().unwrap();
-        state.pending.len()
+    pub fn find_inflight(&self, tx_hash: &TxHash) -> Result<Option<Tx>, MempoolError> {
+        let state = self.mempool.read()
+            .map_err(|e| MempoolError::Lock(format!("Failed to acquire read lock: {}", e)))?;
+            
+        Ok(state.inflight.iter().find(|x| x.hash.eq(tx_hash)).cloned())
     }
 }

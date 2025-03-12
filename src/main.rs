@@ -2,6 +2,7 @@ use std::{collections::HashSet, env, error::Error, path, sync::Arc};
 
 use anyhow::Result;
 use dotenv::dotenv;
+use network::peer_manager::PeerManagerConfig;
 use queue::{chaining::TxChaining, DEFAULT_QUEUE};
 use serde::Deserialize;
 use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
@@ -10,6 +11,7 @@ use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod ledger;
+mod network;
 mod pipeline;
 mod queue;
 mod server;
@@ -62,7 +64,7 @@ async fn main() -> Result<()> {
 struct Config {
     server: server::Config,
     storage: storage::Config,
-    peer_manager: pipeline::fanout::PeerManagerConfig,
+    peer_manager: PeerManagerConfig,
     monitor: pipeline::monitor::Config,
     #[serde(default)]
     queues: HashSet<queue::Config>,

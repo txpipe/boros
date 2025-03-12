@@ -1,6 +1,7 @@
 use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use gasket::framework::*;
+use gasket::messaging::{Message, OutputPort};
 use pallas::{
     crypto::hash::Hash,
     ledger::{
@@ -20,7 +21,6 @@ use tracing::info;
 use super::CAP;
 use crate::{
     ledger::u5c::U5cDataAdapter,
-    priority::Priority,
     queue::priority::Priority,
     storage::{sqlite::SqliteTransaction, Transaction, TransactionStatus},
 };
@@ -31,6 +31,7 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
+    pub output: OutputPort<Vec<u8>>,
 }
 
 impl Stage {
@@ -43,6 +44,7 @@ impl Stage {
             storage,
             priority,
             u5c_adapter,
+            output: Default::default(),
         }
     }
 
@@ -159,22 +161,21 @@ impl gasket::framework::Worker<Stage> for Worker {
         unit: &Vec<Transaction>,
         stage: &mut Stage,
     ) -> Result<(), WorkerError> {
-        info!("validating {} transactions", unit.len());
-
-        let mut transactions = vec![];
-
-        for tx in unit.iter() {
+        for tx in unit {
             let mut tx = tx.clone();
-            let metx = MultiEraTx::decode(AsRef::as_ref(&tx.raw)).map_err(|_| WorkerError::Recv)?;
+            let message = Message::from(tx.raw.clone());
 
-            stage.validate_tx(&metx).await.or_retry()?;
-            stage.evaluate_tx(&metx).await.or_retry()?;
+            if let Err(e) = stage.output.send(message).await {
+                info!("Failed to broadcast transaction: {}", e);
+            } else {
+                info!("Transaction {} broadcasted to receivers", tx.id);
 
-            tx.status = TransactionStatus::Validated;
-            transactions.push(tx);
+                let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
+                tx.status = TransactionStatus::InFlight;
+                tx.slot = Some(tip.0);
+                stage.storage.update(&tx).await.or_retry()?;
+            }
         }
-
-        stage.storage.update_batch(&transactions).await.or_retry()?;
 
         Ok(())
     }
@@ -188,9 +189,9 @@ mod ingest_tests {
     use std::sync::Arc;
 
     use crate::ledger::u5c::U5cDataAdapterImpl;
-    use crate::pipeline::fanout::PeerManagerConfig;
+    use crate::network::peer_manager::PeerManagerConfig;
     use crate::pipeline::ingest;
-    use crate::priority::{Priority, QueueConfig};
+    use crate::queue::{priority::Priority, Config as QueueConfig};
     use crate::{
         ledger::u5c::Config as U5cConfig,
         pipeline::monitor::Config as MonitorConfig,
@@ -411,6 +412,7 @@ mod ingest_tests {
         let queues: HashSet<QueueConfig> = vec![QueueConfig {
             name: "banana".to_string(),
             weight: 2,
+            chained: false,
         }]
         .into_iter()
         .collect();
