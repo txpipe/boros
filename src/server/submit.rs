@@ -13,18 +13,25 @@ use tracing::{error, info};
 use crate::{
     queue::chaining::TxChaining,
     storage::{sqlite::SqliteTransaction, Transaction},
+    tx::validator::TxValidator,
 };
 
 pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
+    tx_validator: Arc<TxValidator>,
 }
 
 impl SubmitServiceImpl {
-    pub fn new(tx_storage: Arc<SqliteTransaction>, tx_chaining: Arc<TxChaining>) -> Self {
+    pub fn new(
+        tx_storage: Arc<SqliteTransaction>,
+        tx_chaining: Arc<TxChaining>,
+        tx_validator: Arc<TxValidator>,
+    ) -> Self {
         Self {
             tx_storage,
             tx_chaining,
+            tx_validator,
         }
     }
 }
@@ -42,12 +49,24 @@ impl SubmitService for SubmitServiceImpl {
         let mut chained_queues = Vec::new();
 
         for (idx, tx) in message.tx.into_iter().enumerate() {
-            let hash = MultiEraTx::decode(&tx.raw)
-                .map_err(|error| {
-                    error!(?error);
-                    Status::failed_precondition(format!("invalid tx at index {idx}"))
-                })?
-                .hash();
+            let metx = MultiEraTx::decode(&tx.raw).map_err(|error| {
+                error!(?error);
+                Status::failed_precondition(format!("invalid tx at index {idx}"))
+            })?;
+
+            if let Err(error) = self.tx_validator.validate_tx(&metx).await {
+                error!(?error);
+                Status::failed_precondition(format!("Phase 1 validation failed at index {idx}"));
+                continue;
+            }
+
+            if let Err(error) = self.tx_validator.evaluate_tx(&metx).await {
+                error!(?error);
+                Status::failed_precondition(format!("Phase 2 validation failed at index {idx}"));
+                continue;
+            }
+
+            let hash = metx.hash();
 
             hashes.push(hash.to_vec().into());
             let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());
