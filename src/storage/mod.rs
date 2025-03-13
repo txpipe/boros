@@ -44,6 +44,7 @@ pub enum TransactionStatus {
     Validated,
     InFlight,
     Confirmed,
+    Failed,
 }
 impl FromStr for TransactionStatus {
     type Err = anyhow::Error;
@@ -54,6 +55,7 @@ impl FromStr for TransactionStatus {
             "validated" => Ok(Self::Validated),
             "inflight" => Ok(Self::InFlight),
             "confirmed" => Ok(Self::Confirmed),
+            "failed" => Ok(Self::Failed),
             _ => Err(anyhow::Error::msg("transaction status not supported")),
         }
     }
@@ -65,6 +67,7 @@ impl Display for TransactionStatus {
             Self::Validated => write!(f, "validated"),
             Self::InFlight => write!(f, "inflight"),
             Self::Confirmed => write!(f, "confirmed"),
+            Self::Failed => write!(f, "failed"),
         }
     }
 }
