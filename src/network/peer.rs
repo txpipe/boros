@@ -105,25 +105,27 @@ impl Peer {
             }
         };
 
+        if !peer_sharing_client.has_agency() {
+            info!(peer = %self.peer_addr, "Agency not available; disabling peer sharing");
+            self.is_peer_sharing_enabled = false;
+            return Ok(vec![]);
+        }
+
         peer_sharing_client
             .send_share_request(desired_peers)
             .await
             .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to send share request: {:?}", e))
+                PeerError::PeerDiscovery(format!("Failed to send share request: {e:?}"))
             })?;
 
-        let mut discovered = vec![];
-        if let Ok(peers) = peer_sharing_client
+        let discovered_peers = peer_sharing_client
             .recv_peer_addresses()
             .await
             .map_err(|e| {
-                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {:?}", e))
-            })
-        {
-            discovered.extend(peers);
-        }
+                PeerError::PeerDiscovery(format!("Failed to receive peer addresses: {e:?}"))
+            })?;
 
-        Ok(discovered)
+        Ok(discovered_peers)
     }
 
     pub async fn query_peer_sharing_mode(&self) -> Result<bool, PeerError> {

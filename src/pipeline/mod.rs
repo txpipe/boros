@@ -6,12 +6,14 @@ use crate::{
     ledger::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
         u5c::{Point, U5cDataAdapterImpl},
-    }, network::peer_manager::PeerManager,
+    },
+    network::peer_manager::PeerManager,
     queue::priority::Priority,
     storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
-    }, Config
+    },
+    Config,
 };
 
 pub mod ingest;
@@ -30,7 +32,7 @@ pub async fn run(
         Arc::new(MockRelayDataAdapter::new());
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
-    let (sender, receiver) = gasket::messaging::tokio::broadcast_channel::<Vec<u8>>(1);
+    let (sender, receiver) = gasket::messaging::tokio::broadcast_channel::<Vec<u8>>(CAP as usize);
 
     let peer_addrs = config.peer_manager.peers.clone();
     let peer_manager = PeerManager::new(2, peer_addrs, receiver);
