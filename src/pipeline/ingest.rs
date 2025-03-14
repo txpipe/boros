@@ -8,7 +8,7 @@ use tracing::info;
 
 use super::CAP;
 use crate::ledger::u5c::U5cDataAdapterImpl;
-use crate::tx::validator::TxValidator;
+use crate::validation::{evaluate_tx, validate_tx};
 use crate::{
     ledger::u5c::U5cDataAdapter,
     queue::priority::Priority,
@@ -21,7 +21,6 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<U5cDataAdapterImpl>,
-    tx_validator: Arc<TxValidator>,
     pub output: OutputPort<Vec<u8>>,
 }
 
@@ -30,13 +29,11 @@ impl Stage {
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
         u5c_adapter: Arc<U5cDataAdapterImpl>,
-        tx_validator: Arc<TxValidator>,
     ) -> Self {
         Self {
             storage,
             priority,
             u5c_adapter,
-            tx_validator,
             output: Default::default(),
         }
     }
@@ -77,8 +74,13 @@ impl gasket::framework::Worker<Stage> for Worker {
             let mut tx = tx.clone();
             let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
 
-            stage.tx_validator.validate_tx(&metx).await.or_retry()?;
-            stage.tx_validator.evaluate_tx(&metx).await.or_retry()?;
+            validate_tx(&metx, stage.u5c_adapter.clone())
+                .await
+                .or_retry()?;
+
+            evaluate_tx(&metx, stage.u5c_adapter.clone())
+                .await
+                .or_retry()?;
 
             let message = Message::from(tx.raw.clone());
 
@@ -117,7 +119,7 @@ mod ingest_tests {
     use crate::ledger::u5c::{ChainSyncStream, Point, U5cDataAdapter};
 
     use crate::storage::{Transaction, TransactionStatus};
-    use crate::tx::validator::TxValidator;
+    use crate::validation::{evaluate_tx, validate_tx};
 
     /// Test file = conway6.tx
     /// This test is expected to pass because the transaction is valid.
@@ -125,7 +127,6 @@ mod ingest_tests {
     async fn it_should_validate_tx() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
         let u5c_data_adapter = Arc::new(MockU5CAdapter);
-        let tx_validator = Arc::new(TxValidator::new(u5c_data_adapter.clone()));
 
         let tx_cbor = include_str!("../../test/conway6.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
@@ -134,7 +135,7 @@ mod ingest_tests {
         let metx = pallas::ledger::traverse::MultiEraTx::decode(AsRef::as_ref(&tx.raw))
             .ok()
             .unwrap();
-        let validation_result = tx_validator.validate_tx(&metx).await;
+        let validation_result = validate_tx(&metx, u5c_data_adapter).await;
 
         assert!(
             validation_result.is_ok(),
@@ -149,7 +150,6 @@ mod ingest_tests {
     async fn it_should_evaluate_tx() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
         let u5c_data_adapter = Arc::new(MockU5CAdapter);
-        let tx_validator = Arc::new(TxValidator::new(u5c_data_adapter.clone()));
 
         let tx_cbor = include_str!("../../test/conway6.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
@@ -158,7 +158,7 @@ mod ingest_tests {
         let metx = pallas::ledger::traverse::MultiEraTx::decode(AsRef::as_ref(&tx.raw))
             .ok()
             .unwrap();
-        let evaluation_result = tx_validator.evaluate_tx(&metx).await;
+        let evaluation_result = evaluate_tx(&metx, u5c_data_adapter).await;
 
         assert!(
             evaluation_result.is_ok(),
@@ -173,7 +173,6 @@ mod ingest_tests {
     async fn it_should_validate_and_evaluate_tx() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
         let u5c_data_adapter = Arc::new(MockU5CAdapter);
-        let tx_validator = Arc::new(TxValidator::new(u5c_data_adapter.clone()));
 
         let tx_cbor = include_str!("../../test/conway6.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
@@ -182,8 +181,8 @@ mod ingest_tests {
         let metx = pallas::ledger::traverse::MultiEraTx::decode(AsRef::as_ref(&tx.raw))
             .ok()
             .unwrap();
-        let validation_result = tx_validator.validate_tx(&metx).await;
-        let evaluation_result = tx_validator.evaluate_tx(&metx).await;
+        let validation_result = validate_tx(&metx, u5c_data_adapter.clone()).await;
+        let evaluation_result = evaluate_tx(&metx, u5c_data_adapter.clone()).await;
 
         assert!(
             validation_result.is_ok(),
@@ -203,7 +202,6 @@ mod ingest_tests {
     async fn it_should_not_validate_tx() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
         let u5c_data_adapter = Arc::new(MockU5CAdapter);
-        let tx_validator = Arc::new(TxValidator::new(u5c_data_adapter.clone()));
 
         let tx_cbor = include_str!("../../test/conway3.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
@@ -212,7 +210,7 @@ mod ingest_tests {
         let metx = pallas::ledger::traverse::MultiEraTx::decode(AsRef::as_ref(&tx.raw))
             .ok()
             .unwrap();
-        let validation_result = tx_validator.validate_tx(&metx).await;
+        let validation_result = validate_tx(&metx, u5c_data_adapter).await;
 
         assert!(
             validation_result.is_err(),
@@ -228,7 +226,6 @@ mod ingest_tests {
     async fn it_should_not_evaluate_tx() {
         let _ = tracing_subscriber::fmt().with_env_filter("info").try_init();
         let u5c_data_adapter = Arc::new(MockU5CAdapter);
-        let tx_validator = Arc::new(TxValidator::new(u5c_data_adapter.clone()));
 
         let tx_cbor = include_str!("../../test/conway4.tx");
         let mut tx = Transaction::new(1.to_string(), hex::decode(tx_cbor).unwrap());
@@ -237,7 +234,7 @@ mod ingest_tests {
         let metx = pallas::ledger::traverse::MultiEraTx::decode(AsRef::as_ref(&tx.raw))
             .ok()
             .unwrap();
-        let evaluation_result = tx_validator.evaluate_tx(&metx).await;
+        let evaluation_result = evaluate_tx(&metx, u5c_data_adapter).await;
 
         assert!(
             evaluation_result.is_err(),

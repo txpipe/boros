@@ -10,7 +10,6 @@ use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
 use tracing::Level;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use tx::validator::TxValidator;
 
 mod ledger;
 mod network;
@@ -18,7 +17,7 @@ mod pipeline;
 mod queue;
 mod server;
 mod storage;
-mod tx;
+mod validation;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -49,20 +48,18 @@ async fn main() -> Result<()> {
     let cursor = cursor_storage.current().await?.map(|c| c.into());
 
     let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.clone().u5c, cursor).await?);
-    let tx_validator = Arc::new(TxValidator::new(u5c_data_adapter.clone()));
 
     let pipeline = pipeline::run(
         config.clone(),
         Arc::clone(&tx_storage),
         Arc::clone(&cursor_storage),
-        Arc::clone(&tx_validator),
         Arc::clone(&u5c_data_adapter),
     );
     let server = server::run(
         config.server,
         Arc::clone(&tx_storage),
         Arc::clone(&tx_chaining),
-        Arc::clone(&tx_validator),
+        Arc::clone(&u5c_data_adapter),
     );
 
     try_join!(pipeline, server)?;

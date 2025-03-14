@@ -11,27 +11,28 @@ use tonic::{Response, Status};
 use tracing::{error, info};
 
 use crate::{
+    ledger::u5c::U5cDataAdapterImpl,
     queue::chaining::TxChaining,
     storage::{sqlite::SqliteTransaction, Transaction},
-    tx::validator::TxValidator,
+    validation::{evaluate_tx, validate_tx},
 };
 
 pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
-    tx_validator: Arc<TxValidator>,
+    u5c_adapter: Arc<U5cDataAdapterImpl>,
 }
 
 impl SubmitServiceImpl {
     pub fn new(
         tx_storage: Arc<SqliteTransaction>,
         tx_chaining: Arc<TxChaining>,
-        tx_validator: Arc<TxValidator>,
+        u5c_adapter: Arc<U5cDataAdapterImpl>,
     ) -> Self {
         Self {
             tx_storage,
             tx_chaining,
-            tx_validator,
+            u5c_adapter,
         }
     }
 }
@@ -54,13 +55,13 @@ impl SubmitService for SubmitServiceImpl {
                 Status::failed_precondition(format!("invalid tx at index {idx}"))
             })?;
 
-            if let Err(error) = self.tx_validator.validate_tx(&metx).await {
+            if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
                 error!(?error);
                 Status::failed_precondition(format!("Phase 1 validation failed at index {idx}"));
                 continue;
             }
 
-            if let Err(error) = self.tx_validator.evaluate_tx(&metx).await {
+            if let Err(error) = evaluate_tx(&metx, self.u5c_adapter.clone()).await {
                 error!(?error);
                 Status::failed_precondition(format!("Phase 2 validation failed at index {idx}"));
                 continue;

@@ -13,7 +13,6 @@ use crate::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
     },
-    tx::validator::TxValidator,
     Config,
 };
 
@@ -27,7 +26,6 @@ pub async fn run(
     config: Config,
     tx_storage: Arc<SqliteTransaction>,
     cursor_storage: Arc<SqliteCursor>,
-    tx_validator: Arc<TxValidator>,
     u5c_data_adapter: Arc<U5cDataAdapterImpl>,
 ) -> Result<()> {
     let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
@@ -48,7 +46,6 @@ pub async fn run(
         tx_storage.clone(),
         priority.clone(),
         u5c_data_adapter.clone(),
-        tx_validator.clone(),
     );
 
     ingest.output.connect(sender);
