@@ -142,9 +142,16 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<Vec<Transaction>>, WorkerError> {
+        let queued_len = stage.output.queued_len().unwrap_or(0);
+        let current_cap = CAP - queued_len as u16;
+
+        if current_cap == 0 {
+            return Ok(WorkSchedule::Idle);
+        }
+
         let transactions = stage
             .priority
-            .next(TransactionStatus::Pending, CAP)
+            .next(TransactionStatus::Pending, current_cap)
             .await
             .or_retry()?;
 
