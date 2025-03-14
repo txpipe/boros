@@ -11,20 +11,28 @@ use tonic::{Response, Status};
 use tracing::{error, info};
 
 use crate::{
+    ledger::u5c::U5cDataAdapterImpl,
     queue::chaining::TxChaining,
     storage::{sqlite::SqliteTransaction, Transaction},
+    validation::{evaluate_tx, validate_tx},
 };
 
 pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
+    u5c_adapter: Arc<U5cDataAdapterImpl>,
 }
 
 impl SubmitServiceImpl {
-    pub fn new(tx_storage: Arc<SqliteTransaction>, tx_chaining: Arc<TxChaining>) -> Self {
+    pub fn new(
+        tx_storage: Arc<SqliteTransaction>,
+        tx_chaining: Arc<TxChaining>,
+        u5c_adapter: Arc<U5cDataAdapterImpl>,
+    ) -> Self {
         Self {
             tx_storage,
             tx_chaining,
+            u5c_adapter,
         }
     }
 }
@@ -42,12 +50,24 @@ impl SubmitService for SubmitServiceImpl {
         let mut chained_queues = Vec::new();
 
         for (idx, tx) in message.tx.into_iter().enumerate() {
-            let hash = MultiEraTx::decode(&tx.raw)
-                .map_err(|error| {
-                    error!(?error);
-                    Status::failed_precondition(format!("invalid tx at index {idx}"))
-                })?
-                .hash();
+            let metx = MultiEraTx::decode(&tx.raw).map_err(|error| {
+                error!(?error);
+                Status::failed_precondition(format!("invalid tx at index {idx}"))
+            })?;
+
+            if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
+                error!(?error);
+                Status::failed_precondition(format!("Phase 1 validation failed at index {idx}"));
+                continue;
+            }
+
+            if let Err(error) = evaluate_tx(&metx, self.u5c_adapter.clone()).await {
+                error!(?error);
+                Status::failed_precondition(format!("Phase 2 validation failed at index {idx}"));
+                continue;
+            }
+
+            let hash = metx.hash();
 
             hashes.push(hash.to_vec().into());
             let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());

@@ -6,7 +6,10 @@ use spec::boros::v1 as spec;
 use tonic::transport::Server;
 use tracing::{error, info};
 
-use crate::{queue::chaining::TxChaining, storage::sqlite::SqliteTransaction};
+use crate::{
+    ledger::u5c::U5cDataAdapterImpl, queue::chaining::TxChaining,
+    storage::sqlite::SqliteTransaction,
+};
 
 mod submit;
 
@@ -14,6 +17,7 @@ pub async fn run(
     config: Config,
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
+    u5c_adapter: Arc<U5cDataAdapterImpl>,
 ) -> Result<()> {
     tokio::spawn(async move {
         let reflection = tonic_reflection::server::Builder::configure()
@@ -22,8 +26,11 @@ pub async fn run(
             .build_v1alpha()
             .unwrap();
 
-        let submit_service =
-            submit::SubmitServiceImpl::new(Arc::clone(&tx_storage), Arc::clone(&tx_chaining));
+        let submit_service = submit::SubmitServiceImpl::new(
+            Arc::clone(&tx_storage),
+            Arc::clone(&tx_chaining),
+            Arc::clone(&u5c_adapter),
+        );
         let submit_service =
             spec::submit::submit_service_server::SubmitServiceServer::new(submit_service);
 
