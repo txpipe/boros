@@ -1,14 +1,12 @@
 use itertools::Itertools;
 use pallas::{crypto::hash::Hash, ledger::traverse::MultiEraTx};
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 use thiserror::Error;
 use tokio::sync::broadcast;
 use tracing::{debug, error};
 
 type TxHash = Hash<32>;
+const CAP: usize = 100;
 
 #[derive(Debug, Error)]
 pub enum MempoolError {
@@ -17,7 +15,7 @@ pub enum MempoolError {
 
     #[error("decode error: {0}")]
     Decode(#[from] pallas::codec::minicbor::decode::Error),
-    
+
     #[error("lock error: {0}")]
     Lock(String),
 }
@@ -48,7 +46,6 @@ pub struct Event {
 #[derive(Default)]
 struct MempoolState {
     inflight: Vec<Tx>,
-    acknowledged: HashMap<TxHash, Tx>,
 }
 
 /// A very basic, FIFO, single consumer mempool
@@ -60,7 +57,9 @@ pub struct Mempool {
 
 impl Mempool {
     pub fn new() -> Self {
-        let mempool = Arc::new(RwLock::new(MempoolState::default()));
+        let mempool = Arc::new(RwLock::new(MempoolState {
+            inflight: Vec::with_capacity(CAP),
+        }));
         let (updates, _) = broadcast::channel(16);
 
         Self { mempool, updates }
@@ -73,18 +72,26 @@ impl Mempool {
     }
 
     fn receive(&self, tx: Tx) -> Result<(), MempoolError> {
-        let mut state = self.mempool.write()
+        let mut state = self
+            .mempool
+            .write()
             .map_err(|e| MempoolError::Lock(format!("Failed to acquire write lock: {}", e)))?;
+
+        if state.inflight.len() >= CAP {
+            if let Some(removed_tx) = state.inflight.first().cloned() {
+                debug!(
+                    hash = %removed_tx.hash,
+                    "dropping oldest transaction due to mempool capacity limit"
+                );
+                state.inflight.remove(0);
+            }
+        }
 
         state.inflight.push(tx.clone());
         self.notify(TxStage::Inflight, tx);
 
-        debug!(
-            inflight = state.inflight.len(),
-            acknowledged = state.acknowledged.len(),
-            "mempool state changed"
-        );
-        
+        debug!(inflight = state.inflight.len(), "mempool state changed");
+
         Ok(())
     }
 
@@ -109,29 +116,32 @@ impl Mempool {
     pub fn acknowledge(&self, count: usize) -> Result<(), MempoolError> {
         debug!(n = count, "acknowledging txs");
 
-        let mut state = self.mempool.write()
+        let mut state = self
+            .mempool
+            .write()
             .map_err(|e| MempoolError::Lock(format!("Failed to acquire write lock: {}", e)))?;
 
-        let selected = state.inflight.drain(..count).collect_vec();
+        state
+            .inflight
+            .drain(..count)
+            .collect_vec()
+            .iter()
+            .for_each(|tx| {
+                let tx = tx.clone();
+                self.notify(TxStage::Acknowledged, tx);
+            });
 
-        for tx in selected {
-            state.acknowledged.insert(tx.hash, tx.clone());
-            self.notify(TxStage::Acknowledged, tx.clone());
-        }
+        debug!(inflight = state.inflight.len(), "mempool state changed");
 
-        debug!(
-            inflight = state.inflight.len(),
-            acknowledged = state.acknowledged.len(),
-            "mempool state changed"
-        );
-        
         Ok(())
     }
 
     pub fn find_inflight(&self, tx_hash: &TxHash) -> Result<Option<Tx>, MempoolError> {
-        let state = self.mempool.read()
+        let state = self
+            .mempool
+            .read()
             .map_err(|e| MempoolError::Lock(format!("Failed to acquire read lock: {}", e)))?;
-            
+
         Ok(state.inflight.iter().find(|x| x.hash.eq(tx_hash)).cloned())
     }
 }
