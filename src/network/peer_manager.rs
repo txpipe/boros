@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gasket::messaging::RecvAdapter;
 use gasket::messaging::{tokio::ChannelRecvAdapter, InputPort};
 use pallas::network::miniprotocols::peersharing::PeerAddress;
 use rand::seq::{IndexedMutRandom, IndexedRandom};
 use serde::Deserialize;
 use thiserror::Error;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio::time::timeout;
 use tracing::{error, info, warn};
 
@@ -25,7 +26,7 @@ pub enum PeerManagerError {
 pub struct PeerManager {
     network_magic: u64,
     peers: RwLock<HashMap<String, Option<Peer>>>,
-    receiver: ChannelRecvAdapter<Vec<u8>>,
+    receiver: Arc<Mutex<ChannelRecvAdapter<Vec<u8>>>>,
 }
 
 impl PeerManager {
@@ -39,6 +40,8 @@ impl PeerManager {
             .map(|peer_addr| (peer_addr, None))
             .collect();
 
+        let receiver = Arc::new(Mutex::new(receiver));
+
         Self {
             network_magic,
             peers: RwLock::new(peers),
@@ -48,12 +51,17 @@ impl PeerManager {
 
     pub async fn init(&self) -> Result<(), PeerManagerError> {
         let mut peers = self.peers.write().await;
+
         for (peer_addr, peer) in peers.iter_mut() {
             let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
+            let peer_rx_guard = self.receiver.lock().await;
+
             let mut input = InputPort::<Vec<u8>>::default();
-            input.connect(self.receiver.clone());
+            input.connect((*peer_rx_guard).clone());
             new_peer.input = Arc::new(RwLock::new(input));
+
+            drop(peer_rx_guard);
 
             new_peer.is_peer_sharing_enabled = new_peer
                 .query_peer_sharing_mode()
@@ -68,7 +76,23 @@ impl PeerManager {
             *peer = Some(new_peer);
         }
 
+        self.start_recv_drain().await;
         Ok(())
+    }
+
+    async fn start_recv_drain(&self) {
+        let receiver = Arc::clone(&self.receiver);
+        let timeout_duration = Duration::from_millis(500);
+
+        tokio::spawn(async move {
+            loop {
+                let _ = timeout(timeout_duration, async {
+                    let mut rx_guard = receiver.lock().await;
+                    rx_guard.recv().await
+                })
+                .await;
+            }
+        });
     }
 
     pub async fn pick_peer_rand(
@@ -123,9 +147,13 @@ impl PeerManager {
 
         let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
+        let peer_rx_guard = self.receiver.lock().await;
+
         let mut input = InputPort::<Vec<u8>>::default();
-        input.connect(self.receiver.clone());
+        input.connect((*peer_rx_guard).clone());
         new_peer.input = Arc::new(RwLock::new(input));
+
+        drop(peer_rx_guard);
 
         let timeout_duration = Duration::from_secs(5);
 
