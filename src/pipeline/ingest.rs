@@ -165,8 +165,19 @@ impl gasket::framework::Worker<Stage> for Worker {
             let mut tx = tx.clone();
             let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
 
-            stage.validate_tx(&metx).await.or_retry()?;
-            stage.evaluate_tx(&metx).await.or_retry()?;
+            if let Err(e) = stage.validate_tx(&metx).await {
+                info!("Transaction {} validation failed: {}", tx.id, e);
+                tx.status = TransactionStatus::Failed;
+                stage.storage.update(&tx).await.or_retry()?;
+                continue;
+            }
+
+            if let Err(e) = stage.evaluate_tx(&metx).await {
+                info!("Transaction {} evaluation failed: {}", tx.id, e);
+                tx.status = TransactionStatus::Failed;
+                stage.storage.update(&tx).await.or_retry()?;
+                continue;
+            }
 
             let message = Message::from(tx.raw.clone());
 
