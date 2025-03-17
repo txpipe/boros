@@ -76,11 +76,11 @@ impl PeerManager {
             *peer = Some(new_peer);
         }
 
-        self.start_recv_drain().await;
+        self.start_recv_task().await;
         Ok(())
     }
 
-    async fn start_recv_drain(&self) {
+    async fn start_recv_task(&self) {
         let receiver = Arc::clone(&self.receiver);
         let timeout_duration = Duration::from_millis(500);
 
