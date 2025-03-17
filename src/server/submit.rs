@@ -11,7 +11,7 @@ use tonic::{Response, Status};
 use tracing::{error, info};
 
 use crate::{
-    ledger::u5c::U5cDataAdapterImpl,
+    ledger::u5c::U5cDataAdapter,
     queue::chaining::TxChaining,
     storage::{sqlite::SqliteTransaction, Transaction},
     validation::{evaluate_tx, validate_tx},
@@ -20,14 +20,14 @@ use crate::{
 pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
-    u5c_adapter: Arc<U5cDataAdapterImpl>,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
 }
 
 impl SubmitServiceImpl {
     pub fn new(
         tx_storage: Arc<SqliteTransaction>,
         tx_chaining: Arc<TxChaining>,
-        u5c_adapter: Arc<U5cDataAdapterImpl>,
+        u5c_adapter: Arc<dyn U5cDataAdapter>,
     ) -> Self {
         Self {
             tx_storage,
@@ -57,13 +57,11 @@ impl SubmitService for SubmitServiceImpl {
 
             if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
                 error!(?error);
-                Status::failed_precondition(format!("Phase 1 validation failed at index {idx}"));
                 continue;
             }
 
             if let Err(error) = evaluate_tx(&metx, self.u5c_adapter.clone()).await {
                 error!(?error);
-                Status::failed_precondition(format!("Phase 2 validation failed at index {idx}"));
                 continue;
             }
 

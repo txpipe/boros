@@ -47,19 +47,19 @@ async fn main() -> Result<()> {
     let cursor_storage = Arc::new(SqliteCursor::new(Arc::clone(&storage)));
     let cursor = cursor_storage.current().await?.map(|c| c.into());
 
-    let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.clone().u5c, cursor).await?);
+    let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c.clone(), cursor).await?);
 
     let pipeline = pipeline::run(
         config.clone(),
+        u5c_data_adapter.clone(),
         Arc::clone(&tx_storage),
         Arc::clone(&cursor_storage),
-        Arc::clone(&u5c_data_adapter),
     );
     let server = server::run(
         config.server,
+        u5c_data_adapter.clone(),
         Arc::clone(&tx_storage),
         Arc::clone(&tx_chaining),
-        Arc::clone(&u5c_data_adapter),
     );
 
     try_join!(pipeline, server)?;

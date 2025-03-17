@@ -7,7 +7,7 @@ use tonic::transport::Server;
 use tracing::{error, info};
 
 use crate::{
-    ledger::u5c::U5cDataAdapterImpl, queue::chaining::TxChaining,
+    ledger::u5c::U5cDataAdapter, queue::chaining::TxChaining,
     storage::sqlite::SqliteTransaction,
 };
 
@@ -15,9 +15,9 @@ mod submit;
 
 pub async fn run(
     config: Config,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
-    u5c_adapter: Arc<U5cDataAdapterImpl>,
 ) -> Result<()> {
     tokio::spawn(async move {
         let reflection = tonic_reflection::server::Builder::configure()

@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::{
     ledger::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
-        u5c::{Point, U5cDataAdapterImpl},
+        u5c::{Point, U5cDataAdapter},
     },
     network::peer_manager::PeerManager,
     queue::priority::Priority,
@@ -24,9 +24,9 @@ const CAP: u16 = 50;
 
 pub async fn run(
     config: Config,
+    u5c_data_adapter: Arc<dyn U5cDataAdapter>,
     tx_storage: Arc<SqliteTransaction>,
     cursor_storage: Arc<SqliteCursor>,
-    u5c_data_adapter: Arc<U5cDataAdapterImpl>,
 ) -> Result<()> {
     let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
         Arc::new(MockRelayDataAdapter::new());

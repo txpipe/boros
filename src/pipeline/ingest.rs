@@ -7,7 +7,6 @@ use tokio::time::sleep;
 use tracing::info;
 
 use super::CAP;
-use crate::ledger::u5c::U5cDataAdapterImpl;
 use crate::validation::{evaluate_tx, validate_tx};
 use crate::{
     ledger::u5c::U5cDataAdapter,
@@ -20,7 +19,7 @@ use crate::{
 pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
-    u5c_adapter: Arc<U5cDataAdapterImpl>,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
     pub output: OutputPort<Vec<u8>>,
 }
 
@@ -28,7 +27,7 @@ impl Stage {
     pub fn new(
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
-        u5c_adapter: Arc<U5cDataAdapterImpl>,
+        u5c_adapter: Arc<dyn U5cDataAdapter>,
     ) -> Self {
         Self {
             storage,
