@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::{
     ledger::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
-        u5c::{Point, U5cDataAdapterImpl},
+        u5c::{Point, U5cDataAdapter},
     },
     network::peer_manager::PeerManager,
     queue::priority::Priority,
@@ -24,13 +24,12 @@ const CAP: u16 = 50;
 
 pub async fn run(
     config: Config,
+    u5c_data_adapter: Arc<dyn U5cDataAdapter>,
     tx_storage: Arc<SqliteTransaction>,
     cursor_storage: Arc<SqliteCursor>,
 ) -> Result<()> {
-    let cursor = cursor_storage.current().await?.map(|c| c.into());
-    let _relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
+    let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
         Arc::new(MockRelayDataAdapter::new());
-    let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
     let (sender, receiver) = gasket::messaging::tokio::broadcast_channel::<Vec<u8>>(CAP as usize);
 
@@ -60,7 +59,7 @@ pub async fn run(
     let peer_discovery = peer_discovery::Stage::new(
         config.peer_manager.clone(),
         peer_manager.clone(),
-        _relay_adapter,
+        relay_adapter,
     );
 
     let policy: gasket::runtime::Policy = Default::default();
