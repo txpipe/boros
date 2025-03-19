@@ -50,7 +50,7 @@ impl gasket::framework::Worker<Stage> for Worker {
         &mut self,
         stage: &mut Stage,
     ) -> Result<WorkSchedule<Vec<Transaction>>, WorkerError> {
-        let queued_len = stage.output.len();
+        let queued_len = stage.output.len().unwrap_or(0);
         let current_cap = CAP - queued_len as u16;
 
         if current_cap == 0 {

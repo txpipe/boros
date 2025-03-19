@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use gasket::messaging::tokio::ChannelSendAdapter;
 
 use crate::{
     ledger::{
@@ -31,10 +32,15 @@ pub async fn run(
     let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
         Arc::new(MockRelayDataAdapter::new());
 
-    let (sender, receiver) = gasket::messaging::tokio::broadcast_channel::<Vec<u8>>(CAP as usize);
+    let (sender, _) = gasket::messaging::tokio::broadcast_channel::<Vec<u8>>(CAP as usize);
+
+    let broadcast_sender = match &sender {
+        ChannelSendAdapter::Broadcast(sender) => sender.clone(),
+        _ => panic!("Expected broadcast sender"),
+    };
 
     let peer_addrs = config.peer_manager.peers.clone();
-    let peer_manager = PeerManager::new(2, peer_addrs, receiver);
+    let peer_manager = PeerManager::new(2, peer_addrs, broadcast_sender);
 
     peer_manager.init().await?;
 
