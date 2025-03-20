@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use gasket::messaging::{tokio::ChannelRecvAdapter, InputPort, Message};
+use gasket::messaging::{tokio::ChannelRecvAdapter, InputPort};
 use pallas::network::miniprotocols::peersharing::PeerAddress;
 use rand::seq::{IndexedMutRandom, IndexedRandom};
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tokio::{sync::broadcast::Sender, time::timeout};
+use tokio::time::timeout;
 use tracing::{error, info, warn};
 
 use super::peer::{Peer, PeerError};
@@ -25,14 +25,14 @@ pub enum PeerManagerError {
 pub struct PeerManager {
     network_magic: u64,
     peers: RwLock<HashMap<String, Option<Peer>>>,
-    sender: Sender<Message<Vec<u8>>>,
+    receiver: ChannelRecvAdapter<Vec<u8>>,
 }
 
 impl PeerManager {
     pub fn new(
         network_magic: u64,
         peer_addresses: Vec<String>,
-        sender: Sender<Message<Vec<u8>>>,
+        receiver: ChannelRecvAdapter<Vec<u8>>,
     ) -> Self {
         let peers = peer_addresses
             .into_iter()
@@ -42,7 +42,7 @@ impl PeerManager {
         Self {
             network_magic,
             peers: RwLock::new(peers),
-            sender,
+            receiver,
         }
     }
 
@@ -53,9 +53,7 @@ impl PeerManager {
             let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
             let mut input = InputPort::<Vec<u8>>::default();
-            let receiver = ChannelRecvAdapter::Broadcast(self.sender.subscribe());
-
-            input.connect(receiver);
+            input.connect(self.receiver.clone());
             new_peer.input = Arc::new(RwLock::new(input));
 
             new_peer.is_peer_sharing_enabled = new_peer
@@ -127,9 +125,7 @@ impl PeerManager {
         let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
         let mut input = InputPort::<Vec<u8>>::default();
-        let receiver = ChannelRecvAdapter::Broadcast(self.sender.subscribe());
-
-        input.connect(receiver);
+        input.connect(self.receiver.clone());
         new_peer.input = Arc::new(RwLock::new(input));
 
         let timeout_duration = Duration::from_secs(5);
