@@ -48,6 +48,7 @@ impl PeerManager {
 
     pub async fn init(&self) -> Result<(), PeerManagerError> {
         let mut peers = self.peers.write().await;
+
         for (peer_addr, peer) in peers.iter_mut() {
             let mut new_peer = Peer::new(peer_addr, self.network_magic);
 
