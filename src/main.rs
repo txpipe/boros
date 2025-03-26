@@ -8,8 +8,9 @@ use queue::{chaining::TxChaining, DEFAULT_QUEUE};
 use serde::Deserialize;
 use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
-use tracing::Level;
+use tracing::{info, Level};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use vault::VaultAdapter;
 
 mod ledger;
 mod network;
@@ -18,6 +19,7 @@ mod queue;
 mod server;
 mod storage;
 mod validation;
+mod vault;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,6 +45,13 @@ async fn main() -> Result<()> {
         Arc::clone(&tx_storage),
         config.clone().queues,
     ));
+
+    let vault = vault::hashicorp::HashicorpVaultClient::new(config.vault.clone())?;
+    vault.store_key().await?;
+    info!("Vault key stored");
+
+    let mnemonic = vault.retrieve_key().await?;
+    info!("Retrieved mnemonic: {}", mnemonic);
 
     let cursor_storage = Arc::new(SqliteCursor::new(Arc::clone(&storage)));
     let cursor = cursor_storage.current().await?.map(|c| c.into());
@@ -76,6 +85,7 @@ struct Config {
     #[serde(default)]
     queues: HashSet<queue::Config>,
     u5c: ledger::u5c::Config,
+    vault: vault::Config,
 }
 
 impl Config {
