@@ -7,6 +7,11 @@ use vaultrs::{
 
 use super::{key, Config as VaultConfig, VaultAdapter, VaultError};
 
+#[derive(Serialize, Deserialize, Debug)]
+struct Secret<T> {
+    secret_key: T,
+}
+
 pub struct HashicorpVaultClient {
     client: VaultClient,
     config: VaultConfig,
@@ -29,7 +34,7 @@ impl HashicorpVaultClient {
 #[async_trait::async_trait]
 impl VaultAdapter<Mnemonic> for HashicorpVaultClient {
     async fn store_key(&self) -> Result<(), VaultError> {
-        let mnemonic = key::generate_mnemonic();
+        let mnemonic = key::generate_mnemonic(&self.config.passphrase);
         let secret = Secret {
             secret_key: mnemonic,
         };
@@ -45,9 +50,4 @@ impl VaultAdapter<Mnemonic> for HashicorpVaultClient {
 
         Ok(secret.secret_key)
     }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Secret<T> {
-    secret_key: T,
 }

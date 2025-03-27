@@ -10,14 +10,15 @@ use pallas::{
     },
 };
 
-pub fn generate_mnemonic() -> Mnemonic {
-    Bip32PrivateKey::generate_with_mnemonic(OsRng, "".into()).1
+pub fn generate_mnemonic(passphrase: &str) -> Mnemonic {
+    Bip32PrivateKey::generate_with_mnemonic(OsRng, passphrase.into()).1
 }
 
 /// @TODO remove dead code after finalizing POC
 #[allow(dead_code)]
-pub fn generate_account_key(mnemonic: &Mnemonic) -> Bip32PrivateKey {
-    let root_key = Bip32PrivateKey::from_bip39_mnenomic(mnemonic.to_string(), "".into()).unwrap();
+pub fn generate_account_key(mnemonic: &Mnemonic, passphrase: &str) -> Bip32PrivateKey {
+    let root_key =
+        Bip32PrivateKey::from_bip39_mnenomic(mnemonic.to_string(), passphrase.into()).unwrap();
     root_key
         .derive(1852 | 0x80000000)
         .derive(1815 | 0x80000000)

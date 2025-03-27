@@ -19,6 +19,7 @@ pub struct Config {
     pub token: String,
     pub mount: String,
     pub path: String,
+    pub passphrase: String,
 }
 
 #[async_trait::async_trait]
