@@ -27,10 +27,12 @@ impl HashicorpVaultClient {
 }
 
 #[async_trait::async_trait]
-impl VaultAdapter for HashicorpVaultClient {
+impl VaultAdapter<Mnemonic> for HashicorpVaultClient {
     async fn store_key(&self) -> Result<(), VaultError> {
         let mnemonic = key::generate_mnemonic();
-        let secret = Secret { mnemonic };
+        let secret = Secret {
+            secret_key: mnemonic,
+        };
 
         kv2::set(&self.client, &self.config.mount, &self.config.path, &secret).await?;
 
@@ -38,13 +40,14 @@ impl VaultAdapter for HashicorpVaultClient {
     }
 
     async fn retrieve_key(&self) -> Result<Mnemonic, VaultError> {
-        let secret: Secret = kv2::read(&self.client, &self.config.mount, &self.config.path).await?;
+        let secret: Secret<Mnemonic> =
+            kv2::read(&self.client, &self.config.mount, &self.config.path).await?;
 
-        Ok(secret.mnemonic)
+        Ok(secret.secret_key)
     }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Secret {
-    mnemonic: Mnemonic,
+struct Secret<T> {
+    secret_key: T,
 }

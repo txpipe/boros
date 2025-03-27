@@ -1,4 +1,3 @@
-use bip39::Mnemonic;
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -23,7 +22,7 @@ pub struct Config {
 }
 
 #[async_trait::async_trait]
-pub trait VaultAdapter: Send + Sync {
+pub trait VaultAdapter<T: Send + Sync + 'static>: Send + Sync {
     async fn store_key(&self) -> Result<(), VaultError>;
-    async fn retrieve_key(&self) -> Result<Mnemonic, VaultError>;
+    async fn retrieve_key(&self) -> Result<T, VaultError>;
 }
