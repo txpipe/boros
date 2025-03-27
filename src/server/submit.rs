@@ -1,5 +1,6 @@
 use std::{pin::Pin, sync::Arc};
 
+use bip39::Mnemonic;
 use pallas::ledger::traverse::MultiEraTx;
 use spec::boros::v1::submit::{
     submit_service_server::SubmitService, LockStateRequest, LockStateResponse, SubmitTxRequest,
@@ -13,6 +14,13 @@ use tracing::{error, info};
 use crate::{
     ledger::u5c::U5cDataAdapter,
     queue::chaining::TxChaining,
+    signing::{
+        key::{
+            derive::get_signing_key,
+            sign::{sign_transaction, to_built_transaction},
+        },
+        SecretAdapter, SecretDataKey,
+    },
     storage::{sqlite::SqliteTransaction, Transaction},
     validation::{evaluate_tx, validate_tx},
 };
@@ -21,6 +29,7 @@ pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
+    secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
 }
 
 impl SubmitServiceImpl {
@@ -28,11 +37,13 @@ impl SubmitServiceImpl {
         tx_storage: Arc<SqliteTransaction>,
         tx_chaining: Arc<TxChaining>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
+        secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
     ) -> Self {
         Self {
             tx_storage,
             tx_chaining,
             u5c_adapter,
+            secret_adapter,
         }
     }
 }
@@ -49,26 +60,44 @@ impl SubmitService for SubmitServiceImpl {
         let mut hashes = vec![];
         let mut chained_queues = Vec::new();
 
+        let mnemonic = self
+            .secret_adapter
+            .retrieve_secret(SecretDataKey::Mnemonic.into())
+            .await
+            .map_err(|error| {
+                error!(?error);
+                Status::internal("Error retrieving mnemonic")
+            })?;
+
         for (idx, tx) in message.tx.into_iter().enumerate() {
             let metx = MultiEraTx::decode(&tx.raw).map_err(|error| {
                 error!(?error);
                 Status::failed_precondition(format!("invalid tx at index {idx}"))
             })?;
 
-            if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
+            let signing_key = get_signing_key(&mnemonic);
+            let built_tx = to_built_transaction(&metx);
+            let signed_tx = sign_transaction(built_tx, signing_key);
+
+            let signed_metx = MultiEraTx::decode(&signed_tx.tx_bytes.0).map_err(|error| {
+                error!(?error);
+                Status::failed_precondition(format!("invalid tx at index {idx}"))
+            })?;
+
+            if let Err(error) = validate_tx(&signed_metx, self.u5c_adapter.clone()).await {
                 error!(?error);
                 continue;
             }
 
-            if let Err(error) = evaluate_tx(&metx, self.u5c_adapter.clone()).await {
+            if let Err(error) = evaluate_tx(&signed_metx, self.u5c_adapter.clone()).await {
                 error!(?error);
                 continue;
             }
 
-            let hash = metx.hash();
+            let hash = signed_metx.hash();
 
             hashes.push(hash.to_vec().into());
-            let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());
+            let mut tx_storage = Transaction::new(hash.to_string(), signed_metx.encode());
 
             if let Some(queue) = tx.queue {
                 if self.tx_chaining.is_chained_queue(&queue) {

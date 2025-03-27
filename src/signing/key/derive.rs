@@ -1,4 +1,4 @@
-use bip39::{rand_core::OsRng, Mnemonic};
+use bip39::Mnemonic;
 use pallas::{
     crypto::{hash::Hasher, key::ed25519::PublicKey},
     ledger::addresses::{
@@ -10,15 +10,19 @@ use pallas::{
     },
 };
 
-pub fn generate_mnemonic(passphrase: &str) -> Mnemonic {
-    Bip32PrivateKey::generate_with_mnemonic(OsRng, passphrase.into()).1
-}
-
 /// @TODO remove dead code after finalizing POC
 #[allow(dead_code)]
-pub fn generate_account_key(mnemonic: &Mnemonic, passphrase: &str) -> Bip32PrivateKey {
-    let root_key =
-        Bip32PrivateKey::from_bip39_mnenomic(mnemonic.to_string(), passphrase.into()).unwrap();
+pub fn get_signing_key(mnemonic: &Mnemonic) -> PrivateKey {
+    let account_key = generate_account_key(mnemonic);
+    let (private_key, _) = generate_payment_keypair(&account_key);
+    let (signing_key, _) = to_ed25519_keypair(&private_key);
+
+    signing_key
+}
+
+#[allow(dead_code)]
+pub fn generate_account_key(mnemonic: &Mnemonic) -> Bip32PrivateKey {
+    let root_key = Bip32PrivateKey::from_bip39_mnenomic(mnemonic.to_string(), "".into()).unwrap();
     root_key
         .derive(1852 | 0x80000000)
         .derive(1815 | 0x80000000)
