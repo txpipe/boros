@@ -16,9 +16,9 @@ mod network;
 mod pipeline;
 mod queue;
 mod server;
+mod signing;
 mod storage;
 mod validation;
-mod signing;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -45,7 +45,9 @@ async fn main() -> Result<()> {
         config.clone().queues,
     ));
 
-    let secret_adapter = Arc::new(signing::hashicorp::HashicorpVaultClient::new(config.signing.clone())?);
+    let secret_adapter = Arc::new(signing::hashicorp::HashicorpVaultClient::new(
+        config.signing.clone(),
+    )?);
 
     let cursor_storage = Arc::new(SqliteCursor::new(Arc::clone(&storage)));
     let cursor = cursor_storage.current().await?.map(|c| c.into());
