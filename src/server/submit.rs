@@ -19,7 +19,7 @@ use crate::{
             derive::get_signing_key,
             sign::{sign_transaction, to_built_transaction},
         },
-        SecretAdapter, SecretDataKey,
+        SecretAdapter,
     },
     storage::{sqlite::SqliteTransaction, Transaction},
     validation::{evaluate_tx, validate_tx},
@@ -62,7 +62,7 @@ impl SubmitService for SubmitServiceImpl {
 
         let mnemonic = self
             .secret_adapter
-            .retrieve_secret(SecretDataKey::Mnemonic.into())
+            .retrieve_secret()
             .await
             .map_err(|error| {
                 error!(?error);

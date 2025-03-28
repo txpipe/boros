@@ -6,18 +6,6 @@ use vaultrs::{
 
 use super::{Config as VaultConfig, Secret, SecretAdapter, SigningError};
 
-pub enum SecretEngine {
-    KV2,
-}
-
-impl SecretEngine {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::KV2 => "secret",
-        }
-    }
-}
-
 pub struct HashicorpVaultClient {
     client: VaultClient,
     config: VaultConfig,
@@ -39,16 +27,16 @@ impl HashicorpVaultClient {
 
 #[async_trait::async_trait]
 impl SecretAdapter<Mnemonic> for HashicorpVaultClient {
-    async fn retrieve_secret(&self, key: String) -> Result<Mnemonic, SigningError> {
-        let secret: Secret =
-            kv2::read(&self.client, SecretEngine::KV2.as_str(), &self.config.path).await?;
+    async fn retrieve_secret(&self) -> Result<Mnemonic, SigningError> {
+        let secret: Secret = kv2::read(&self.client, "secret", &self.config.path)
+            .await
+            .map_err(SigningError::Client)?;
 
-        let value = secret
-            .value(key)
-            .ok_or_else(|| SigningError::SecretNotFound("Mnemonic not found in secret".into()))?;
+        let value = secret.values.get(&self.config.key).ok_or_else(|| {
+            SigningError::SecretNotFound(format!("Key {} not found in secret", self.config.key))
+        })?;
 
-        let mnemonic = serde_json::from_value(value.clone())
-            .map_err(|e| SigningError::Config(e.to_string()))?;
+        let mnemonic = serde_json::from_value(value.clone())?;
 
         Ok(mnemonic)
     }

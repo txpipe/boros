@@ -17,6 +17,9 @@ pub enum SigningError {
 
     #[error("Secret not found error: {0}")]
     SecretNotFound(String),
+
+    #[error("Deserialization error: {0}")]
+    Deserialization(#[from] serde_json::Error),
 }
 
 #[derive(Deserialize, Clone)]
@@ -24,34 +27,16 @@ pub struct Config {
     pub api_addr: String,
     pub token: String,
     pub path: String,
+    pub key: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Secret {
     #[serde(flatten)]
-    secret: HashMap<String, Value>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Hash)]
-pub enum SecretDataKey {
-    Mnemonic,
-}
-
-impl From<SecretDataKey> for String {
-    fn from(key: SecretDataKey) -> Self {
-        match key {
-            SecretDataKey::Mnemonic => "mnemonic".to_string(),
-        }
-    }
-}
-
-impl Secret {
-    fn value(&self, key: String) -> Option<&Value> {
-        self.secret.get(&key)
-    }
+    values: HashMap<String, Value>,
 }
 
 #[async_trait::async_trait]
 pub trait SecretAdapter<T: Send + Sync + 'static>: Send + Sync {
-    async fn retrieve_secret(&self, key: String) -> Result<T, SigningError>;
+    async fn retrieve_secret(&self) -> Result<T, SigningError>;
 }
