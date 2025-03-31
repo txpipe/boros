@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use bip39::Mnemonic;
 use gasket::framework::*;
 use gasket::messaging::{Message, OutputPort};
 use pallas::ledger::traverse::MultiEraTx;
@@ -7,7 +8,11 @@ use tokio::time::sleep;
 use tracing::info;
 
 use super::CAP;
+use crate::signing::key::derive::get_signing_key;
+use crate::signing::key::sign::{sign_transaction, to_built_transaction};
+use crate::signing::SecretAdapter;
 use crate::validation::{evaluate_tx, validate_tx};
+use crate::Config;
 use crate::{
     ledger::u5c::U5cDataAdapter,
     queue::priority::Priority,
@@ -20,6 +25,8 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
+    secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
+    config: Config,
     pub output: OutputPort<Vec<u8>>,
 }
 
@@ -28,22 +35,31 @@ impl Stage {
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
+        secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
+        config: Config,
     ) -> Self {
         Self {
             storage,
             priority,
             u5c_adapter,
+            secret_adapter,
+            config,
             output: Default::default(),
         }
     }
 }
 
-pub struct Worker;
+pub struct Worker {
+    mnemonic: Mnemonic,
+}
 
 #[async_trait::async_trait(?Send)]
 impl gasket::framework::Worker<Stage> for Worker {
-    async fn bootstrap(_stage: &Stage) -> Result<Self, WorkerError> {
-        Ok(Self)
+    async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
+        let key = stage.config.signing.key.clone();
+        let mnemonic = stage.secret_adapter.retrieve_secret(key).await.or_retry()?;
+
+        Ok(Self { mnemonic })
     }
 
     async fn schedule(
@@ -76,8 +92,23 @@ impl gasket::framework::Worker<Stage> for Worker {
         unit: &Vec<Transaction>,
         stage: &mut Stage,
     ) -> Result<(), WorkerError> {
-        for tx in unit {
-            let mut tx = tx.clone();
+        for mut tx in unit.iter().cloned() {
+            let should_sign = stage
+                .config
+                .queues
+                .get(&tx.queue)
+                .map(|config| config.server_signing)
+                .unwrap_or(false);
+
+            if should_sign {
+                info!("Signing transaction {} with server key", tx.id);
+                let signing_key = get_signing_key(&self.mnemonic);
+                let built_tx = to_built_transaction(tx.clone());
+                let signed_tx = sign_transaction(built_tx, signing_key);
+                tx.raw = signed_tx.tx_bytes.0.clone();
+                info!("Transaction {} signed successfully", tx.id);
+            }
+
             let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
 
             if let Err(e) = validate_tx(&metx, stage.u5c_adapter.clone()).await {
@@ -100,7 +131,6 @@ impl gasket::framework::Worker<Stage> for Worker {
                 info!("Failed to broadcast transaction: {}", e);
             } else {
                 info!("Transaction {} broadcasted to receivers", tx.id);
-
                 let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
                 tx.status = TransactionStatus::InFlight;
                 tx.slot = Some(tip.0);
@@ -119,6 +149,7 @@ mod ingest_tests {
     use std::sync::Arc;
 
     use anyhow::Ok;
+
     use pallas::codec::utils::KeyValuePairs;
     use pallas::crypto::hash::Hash;
     use pallas::ledger::primitives::conway::{

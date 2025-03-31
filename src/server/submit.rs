@@ -1,6 +1,5 @@
-use std::{pin::Pin, sync::Arc};
+use std::{collections::HashSet, pin::Pin, sync::Arc};
 
-use bip39::Mnemonic;
 use pallas::ledger::traverse::MultiEraTx;
 use spec::boros::v1::submit::{
     submit_service_server::SubmitService, LockStateRequest, LockStateResponse, SubmitTxRequest,
@@ -9,18 +8,11 @@ use spec::boros::v1::submit::{
 use tokio::sync::mpsc;
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Response, Status};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     ledger::u5c::U5cDataAdapter,
-    queue::chaining::TxChaining,
-    signing::{
-        key::{
-            derive::get_signing_key,
-            sign::{sign_transaction, to_built_transaction},
-        },
-        SecretAdapter,
-    },
+    queue::{chaining::TxChaining, Config, DEFAULT_QUEUE},
     storage::{sqlite::SqliteTransaction, Transaction},
     validation::{evaluate_tx, validate_tx},
 };
@@ -29,7 +21,7 @@ pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
-    secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
+    queues: HashSet<Config>,
 }
 
 impl SubmitServiceImpl {
@@ -37,13 +29,13 @@ impl SubmitServiceImpl {
         tx_storage: Arc<SqliteTransaction>,
         tx_chaining: Arc<TxChaining>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
-        secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
+        queues: HashSet<Config>,
     ) -> Self {
         Self {
             tx_storage,
             tx_chaining,
             u5c_adapter,
-            secret_adapter,
+            queues,
         }
     }
 }
@@ -60,61 +52,63 @@ impl SubmitService for SubmitServiceImpl {
         let mut hashes = vec![];
         let mut chained_queues = Vec::new();
 
-        let mnemonic = self
-            .secret_adapter
-            .retrieve_secret()
-            .await
-            .map_err(|error| {
-                error!(?error);
-                Status::internal("Error retrieving mnemonic")
-            })?;
-
         for (idx, tx) in message.tx.into_iter().enumerate() {
             let metx = MultiEraTx::decode(&tx.raw).map_err(|error| {
                 error!(?error);
                 Status::failed_precondition(format!("invalid tx at index {idx}"))
             })?;
 
-            let signing_key = get_signing_key(&mnemonic);
-            let built_tx = to_built_transaction(&metx);
-            let signed_tx = sign_transaction(built_tx, signing_key);
+            let hash = metx.hash();
 
-            let signed_metx = MultiEraTx::decode(&signed_tx.tx_bytes.0).map_err(|error| {
-                error!(?error);
-                Status::failed_precondition(format!("invalid tx at index {idx}"))
-            })?;
+            let queue_config = tx.queue.as_ref().and_then(|queue_name| {
+                self.queues
+                    .get(queue_name)
+                    .map(|config| (queue_name.clone(), config.clone()))
+                    .or_else(|| {
+                        warn!(queue = ?queue_name, "Queue not found, using default queue");
+                        self.queues
+                            .iter()
+                            .find(|q| q.name == *DEFAULT_QUEUE)
+                            .map(|config| (DEFAULT_QUEUE.to_string(), config.clone()))
+                    })
+            });
 
-            if let Err(error) = validate_tx(&signed_metx, self.u5c_adapter.clone()).await {
-                error!(?error);
-                continue;
+            let should_validate = queue_config
+                .as_ref()
+                .is_none_or(|(_, config)| !config.server_signing);
+
+            if should_validate {
+                if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
+                    error!(?error);
+                    continue;
+                }
+
+                if let Err(error) = evaluate_tx(&metx, self.u5c_adapter.clone()).await {
+                    error!(?error);
+                    continue;
+                }
             }
 
-            if let Err(error) = evaluate_tx(&signed_metx, self.u5c_adapter.clone()).await {
-                error!(?error);
-                continue;
-            }
+            let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());
 
-            let hash = signed_metx.hash();
+            if let Some((queue_name, _)) = queue_config {
+                if self.tx_chaining.is_chained_queue(&queue_name) {
+                    chained_queues.push(queue_name.clone());
 
-            hashes.push(hash.to_vec().into());
-            let mut tx_storage = Transaction::new(hash.to_string(), signed_metx.encode());
-
-            if let Some(queue) = tx.queue {
-                if self.tx_chaining.is_chained_queue(&queue) {
-                    chained_queues.push(queue.clone());
-
+                    let lock_token = tx.lock_token.unwrap_or_default();
                     if !self
                         .tx_chaining
-                        .is_valid_token(&queue, &tx.lock_token.unwrap_or_default())
+                        .is_valid_token(&queue_name, &lock_token)
                         .await
                     {
                         return Err(Status::permission_denied("invalid lock token"));
                     }
                 }
 
-                tx_storage.queue = queue;
+                tx_storage.queue = queue_name;
             }
 
+            hashes.push(hash.to_vec().into());
             txs.push(tx_storage)
         }
 

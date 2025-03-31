@@ -38,5 +38,5 @@ struct Secret {
 
 #[async_trait::async_trait]
 pub trait SecretAdapter<T: Send + Sync + 'static>: Send + Sync {
-    async fn retrieve_secret(&self) -> Result<T, SigningError>;
+    async fn retrieve_secret(&self, key: String) -> Result<T, SigningError>;
 }

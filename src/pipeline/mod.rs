@@ -1,20 +1,17 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use bip39::Mnemonic;
 use gasket::messaging::tokio::ChannelSendAdapter;
 
 use crate::{
     ledger::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
         u5c::{Point, U5cDataAdapter},
-    },
-    network::peer_manager::PeerManager,
-    queue::priority::Priority,
-    storage::{
+    }, network::peer_manager::PeerManager, queue::priority::Priority, signing::SecretAdapter, storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
-    },
-    Config,
+    }, Config
 };
 
 pub mod ingest;
@@ -26,6 +23,7 @@ const CAP: u16 = 50;
 pub async fn run(
     config: Config,
     u5c_data_adapter: Arc<dyn U5cDataAdapter>,
+    secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
     tx_storage: Arc<SqliteTransaction>,
     cursor_storage: Arc<SqliteCursor>,
 ) -> Result<()> {
@@ -46,12 +44,14 @@ pub async fn run(
 
     let peer_manager = Arc::new(peer_manager);
 
-    let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues));
+    let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues.clone()));
 
     let mut ingest = ingest::Stage::new(
         tx_storage.clone(),
         priority.clone(),
         u5c_data_adapter.clone(),
+        secret_adapter.clone(),
+        config.clone(),
     );
 
     ingest.output.connect(sender);

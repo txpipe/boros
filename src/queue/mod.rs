@@ -15,6 +15,7 @@ pub struct Config {
     pub weight: u8,
     #[serde(default)]
     pub chained: bool,
+    pub server_signing: bool,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -22,6 +23,7 @@ impl Default for Config {
             name: DEFAULT_QUEUE.into(),
             weight: DEFAULT_WEIGHT,
             chained: false,
+            server_signing: false,
         }
     }
 }

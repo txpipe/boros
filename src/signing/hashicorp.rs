@@ -27,12 +27,12 @@ impl HashicorpVaultClient {
 
 #[async_trait::async_trait]
 impl SecretAdapter<Mnemonic> for HashicorpVaultClient {
-    async fn retrieve_secret(&self) -> Result<Mnemonic, SigningError> {
+    async fn retrieve_secret(&self, key: String) -> Result<Mnemonic, SigningError> {
         let secret: Secret = kv2::read(&self.client, "secret", &self.config.path)
             .await
             .map_err(SigningError::Client)?;
 
-        let value = secret.values.get(&self.config.key).ok_or_else(|| {
+        let value = secret.values.get(&key).ok_or_else(|| {
             SigningError::SecretNotFound(format!("Key {} not found in secret", self.config.key))
         })?;
 
