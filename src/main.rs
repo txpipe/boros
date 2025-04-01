@@ -45,10 +45,6 @@ async fn main() -> Result<()> {
         config.clone().queues,
     ));
 
-    let secret_adapter = Arc::new(signing::hashicorp::HashicorpVaultClient::new(
-        config.signing.clone(),
-    )?);
-
     let cursor_storage = Arc::new(SqliteCursor::new(Arc::clone(&storage)));
     let cursor = cursor_storage.current().await?.map(|c| c.into());
 
@@ -57,7 +53,6 @@ async fn main() -> Result<()> {
     let pipeline = pipeline::run(
         config.clone(),
         u5c_data_adapter.clone(),
-        secret_adapter,
         Arc::clone(&tx_storage),
         Arc::clone(&cursor_storage),
     );
