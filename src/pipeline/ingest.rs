@@ -8,7 +8,6 @@ use tokio::time::sleep;
 use tracing::info;
 
 use super::CAP;
-use crate::signing::key::derive::get_signing_key;
 use crate::signing::key::sign::{sign_transaction, to_built_transaction};
 use crate::signing::SecretAdapter;
 use crate::validation::{evaluate_tx, validate_tx};
@@ -102,9 +101,8 @@ impl gasket::framework::Worker<Stage> for Worker {
 
             if should_sign {
                 info!("Signing transaction {} with server key", tx.id);
-                let signing_key = get_signing_key(&self.mnemonic);
                 let built_tx = to_built_transaction(tx.clone());
-                let signed_tx = sign_transaction(built_tx, signing_key);
+                let signed_tx = sign_transaction(built_tx, &self.mnemonic);
                 tx.raw = signed_tx.tx_bytes.0.clone();
                 info!("Transaction {} signed successfully", tx.id);
             }

@@ -57,13 +57,13 @@ async fn main() -> Result<()> {
     let pipeline = pipeline::run(
         config.clone(),
         u5c_data_adapter.clone(),
+        secret_adapter,
         Arc::clone(&tx_storage),
         Arc::clone(&cursor_storage),
     );
     let server = server::run(
-        config.server,
+        config,
         u5c_data_adapter.clone(),
-        secret_adapter.clone(),
         Arc::clone(&tx_storage),
         Arc::clone(&tx_chaining),
     );

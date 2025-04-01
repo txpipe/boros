@@ -1,14 +1,14 @@
-use pallas::{
-    txbuilder::{BuildConway, BuiltTransaction, Bytes, Bytes32, StagingTransaction},
-    wallet::keystore::PrivateKey,
-};
+use bip39::Mnemonic;
+use pallas::txbuilder::{BuildConway, BuiltTransaction, Bytes, Bytes32, StagingTransaction};
 
 use crate::storage::Transaction;
+
+use super::derive::get_signing_key;
 
 pub fn to_built_transaction(tx: Transaction) -> BuiltTransaction {
     let staging_tx = StagingTransaction::new();
     let built_tx = staging_tx.build_conway_raw().unwrap();
-    
+
     let tx_hash: [u8; 32] = match hex::decode(tx.id) {
         Ok(hash) => match hash.try_into() {
             Ok(hash) => hash,
@@ -27,7 +27,8 @@ pub fn to_built_transaction(tx: Transaction) -> BuiltTransaction {
     }
 }
 
-pub fn sign_transaction(built_tx: BuiltTransaction, signing_key: PrivateKey) -> BuiltTransaction {
+pub fn sign_transaction(built_tx: BuiltTransaction, mnemonic: &Mnemonic) -> BuiltTransaction {
+    let signing_key = get_signing_key(mnemonic);
     let signed_tx = built_tx.sign(signing_key);
     match signed_tx {
         Ok(tx) => tx,
