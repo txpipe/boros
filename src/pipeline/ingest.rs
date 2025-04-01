@@ -96,7 +96,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
             if should_sign {
                 info!("Signing transaction {} with server key", tx.id);
-                tx.raw = stage.secret_adapter.sign(&tx.raw).await.or_retry()?;
+                tx.raw = stage.secret_adapter.sign(tx.raw).await.or_retry()?;
                 info!("Transaction {} signed successfully", tx.id);
             }
 

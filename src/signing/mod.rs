@@ -41,7 +41,7 @@ struct Secret {
 
 #[async_trait::async_trait]
 pub trait SigningAdapter: Send + Sync {
-    async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, SigningError>;
+    async fn sign(&self, data: Vec<u8>) -> Result<Vec<u8>, SigningError>;
     #[allow(unused)] // to make clippy happy only
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<bool, SigningError>;
+    async fn verify(&self, data: Vec<u8>, signature: Vec<u8>) -> Result<bool, SigningError>;
 }

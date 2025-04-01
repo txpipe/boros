@@ -60,22 +60,16 @@ impl SubmitService for SubmitServiceImpl {
 
             let hash = metx.hash();
 
-            let queue_config = tx.queue.as_ref().and_then(|queue_name| {
-                self.queues
-                    .get(queue_name)
-                    .map(|config| (queue_name.clone(), config.clone()))
-                    .or_else(|| {
-                        warn!(queue = ?queue_name, "Queue not found, using default queue");
-                        self.queues
-                            .iter()
-                            .find(|q| q.name == *DEFAULT_QUEUE)
-                            .map(|config| (DEFAULT_QUEUE.to_string(), config.clone()))
-                    })
-            });
-
-            let should_validate = queue_config
+            let should_validate = tx
+                .queue
                 .as_ref()
-                .is_none_or(|(_, config)| !config.server_signing);
+                .and_then(|queue_name| {
+                    self.queues.get(queue_name).or_else(|| {
+                        warn!(queue = ?queue_name, "Queue not found, using default queue");
+                        self.queues.iter().find(|q| q.name == *DEFAULT_QUEUE)
+                    })
+                })
+                .is_none_or(|config| !config.server_signing);
 
             if should_validate {
                 if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
@@ -91,21 +85,17 @@ impl SubmitService for SubmitServiceImpl {
 
             let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());
 
-            if let Some((queue_name, _)) = queue_config {
-                if self.tx_chaining.is_chained_queue(&queue_name) {
-                    chained_queues.push(queue_name.clone());
+            if let Some(queue) = tx.queue {
+                if self.tx_chaining.is_chained_queue(&queue) {
+                    chained_queues.push(queue.clone());
 
                     let lock_token = tx.lock_token.unwrap_or_default();
-                    if !self
-                        .tx_chaining
-                        .is_valid_token(&queue_name, &lock_token)
-                        .await
-                    {
+                    if !self.tx_chaining.is_valid_token(&queue, &lock_token).await {
                         return Err(Status::permission_denied("invalid lock token"));
                     }
                 }
 
-                tx_storage.queue = queue_name;
+                tx_storage.queue = queue;
             }
 
             hashes.push(hash.to_vec().into());

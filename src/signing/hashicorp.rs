@@ -47,10 +47,10 @@ impl HashicorpVaultClient {
 
 #[async_trait::async_trait]
 impl SigningAdapter for HashicorpVaultClient {
-    async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, SigningError> {
+    async fn sign(&self, data: Vec<u8>) -> Result<Vec<u8>, SigningError> {
         let mnemonic = self.get_mnemonic(&self.config.key).await?;
 
-        let metx = MultiEraTx::decode(data)
+        let metx = MultiEraTx::decode(&data)
             .map_err(|e| SigningError::Decoding(format!("Failed to decode transaction: {}", e)))?;
 
         let built_tx = to_built_transaction(&metx);
@@ -59,11 +59,11 @@ impl SigningAdapter for HashicorpVaultClient {
         Ok(signed_tx.tx_bytes.0)
     }
 
-    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<bool, SigningError> {
+    async fn verify(&self, data: Vec<u8>, signature: Vec<u8>) -> Result<bool, SigningError> {
         let mnemonic = self.get_mnemonic(&self.config.key).await?;
         let (_, public_key) = get_ed25519_keypair(&mnemonic);
 
-        let signature = Signature::try_from(signature)
+        let signature = Signature::try_from(signature.as_slice())
             .map_err(|e| SigningError::Decoding(format!("Failed to decode signature: {}", e)))?;
 
         Ok(public_key.verify(data, &signature))
