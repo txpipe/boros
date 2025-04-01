@@ -20,6 +20,9 @@ pub enum SigningError {
 
     #[error("Deserialization error: {0}")]
     Deserialization(#[from] serde_json::Error),
+
+    #[error("Decoding error: {0}")]
+    Decoding(String),
 }
 
 #[derive(Deserialize, Clone)]
@@ -37,6 +40,8 @@ struct Secret {
 }
 
 #[async_trait::async_trait]
-pub trait SecretAdapter<T: Send + Sync + 'static>: Send + Sync {
-    async fn retrieve_secret(&self, key: String) -> Result<T, SigningError>;
+pub trait SigningAdapter: Send + Sync {
+    async fn sign(&self, data: &[u8]) -> Result<Vec<u8>, SigningError>;
+    #[allow(unused)] // to make clippy happy only
+    async fn verify(&self, data: &[u8], signature: &[u8]) -> Result<bool, SigningError>;
 }

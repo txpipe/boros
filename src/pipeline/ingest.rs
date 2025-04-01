@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Duration};
 
-use bip39::Mnemonic;
 use gasket::framework::*;
 use gasket::messaging::{Message, OutputPort};
 use pallas::ledger::traverse::MultiEraTx;
@@ -8,8 +7,7 @@ use tokio::time::sleep;
 use tracing::info;
 
 use super::CAP;
-use crate::signing::key::sign::{sign_transaction, to_built_transaction};
-use crate::signing::SecretAdapter;
+use crate::signing::SigningAdapter;
 use crate::validation::{evaluate_tx, validate_tx};
 use crate::Config;
 use crate::{
@@ -24,7 +22,7 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
-    secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
+    secret_adapter: Arc<dyn SigningAdapter>,
     config: Config,
     pub output: OutputPort<Vec<u8>>,
 }
@@ -34,7 +32,7 @@ impl Stage {
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
-        secret_adapter: Arc<dyn SecretAdapter<Mnemonic>>,
+        secret_adapter: Arc<dyn SigningAdapter>,
         config: Config,
     ) -> Self {
         Self {
@@ -48,17 +46,12 @@ impl Stage {
     }
 }
 
-pub struct Worker {
-    mnemonic: Mnemonic,
-}
+pub struct Worker;
 
 #[async_trait::async_trait(?Send)]
 impl gasket::framework::Worker<Stage> for Worker {
-    async fn bootstrap(stage: &Stage) -> Result<Self, WorkerError> {
-        let key = stage.config.signing.key.clone();
-        let mnemonic = stage.secret_adapter.retrieve_secret(key).await.or_retry()?;
-
-        Ok(Self { mnemonic })
+    async fn bootstrap(_stage: &Stage) -> Result<Self, WorkerError> {
+        Ok(Self)
     }
 
     async fn schedule(
@@ -91,7 +84,9 @@ impl gasket::framework::Worker<Stage> for Worker {
         unit: &Vec<Transaction>,
         stage: &mut Stage,
     ) -> Result<(), WorkerError> {
-        for mut tx in unit.iter().cloned() {
+        for tx in unit {
+            let mut tx = tx.clone();
+
             let should_sign = stage
                 .config
                 .queues
@@ -101,9 +96,7 @@ impl gasket::framework::Worker<Stage> for Worker {
 
             if should_sign {
                 info!("Signing transaction {} with server key", tx.id);
-                let built_tx = to_built_transaction(tx.clone());
-                let signed_tx = sign_transaction(built_tx, &self.mnemonic);
-                tx.raw = signed_tx.tx_bytes.0.clone();
+                tx.raw = stage.secret_adapter.sign(&tx.raw).await.or_retry()?;
                 info!("Transaction {} signed successfully", tx.id);
             }
 
@@ -142,13 +135,12 @@ impl gasket::framework::Worker<Stage> for Worker {
 
 #[cfg(test)]
 mod ingest_tests {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::str::FromStr;
     use std::sync::Arc;
 
     use anyhow::Ok;
 
-    use pallas::codec::utils::KeyValuePairs;
     use pallas::crypto::hash::Hash;
     use pallas::ledger::primitives::conway::{
         CostModels, DRepVotingThresholds, PoolVotingThresholds,
@@ -449,7 +441,7 @@ mod ingest_tests {
                     20744, 32, 25933, 32, 24623, 32, 43053543, 10, 53384111, 14333, 10, 43574283,
                     26308, 10,
                 ]),
-                unknown: KeyValuePairs::from(vec![]),
+                unknown: BTreeMap::new(),
             },
             execution_costs: ExUnitPrices {
                 mem_price: RationalNumber {

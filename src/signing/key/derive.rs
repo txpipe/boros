@@ -10,17 +10,13 @@ use pallas::{
     },
 };
 
-/// @TODO remove dead code after finalizing POC
-#[allow(dead_code)]
-pub fn get_signing_key(mnemonic: &Mnemonic) -> PrivateKey {
+pub fn get_ed25519_keypair(mnemonic: &Mnemonic) -> (PrivateKey, PublicKey) {
     let account_key = generate_account_key(mnemonic);
     let (private_key, _) = generate_payment_keypair(&account_key);
-    let (signing_key, _) = to_ed25519_keypair(&private_key);
 
-    signing_key
+    to_ed25519_keypair(&private_key)
 }
 
-#[allow(dead_code)]
 pub fn generate_account_key(mnemonic: &Mnemonic) -> Bip32PrivateKey {
     let root_key = Bip32PrivateKey::from_bip39_mnenomic(mnemonic.to_string(), "".into()).unwrap();
     root_key
@@ -29,7 +25,6 @@ pub fn generate_account_key(mnemonic: &Mnemonic) -> Bip32PrivateKey {
         .derive(0x80000000)
 }
 
-#[allow(dead_code)]
 pub fn generate_payment_keypair(
     account_key: &Bip32PrivateKey,
 ) -> (Bip32PrivateKey, Bip32PublicKey) {
@@ -39,7 +34,6 @@ pub fn generate_payment_keypair(
     (private_key, public_key)
 }
 
-#[allow(dead_code)]
 pub fn generate_delegation_keypair(
     account_key: &Bip32PrivateKey,
 ) -> (Bip32PrivateKey, Bip32PublicKey) {
@@ -49,7 +43,6 @@ pub fn generate_delegation_keypair(
     (private_key, public_key)
 }
 
-#[allow(dead_code)]
 pub fn generate_address(public_key: &Bip32PublicKey) -> Address {
     let payment_hash = Hasher::<224>::hash(&public_key.as_bytes()[..32]);
     let address = ShelleyAddress::new(
@@ -61,7 +54,6 @@ pub fn generate_address(public_key: &Bip32PublicKey) -> Address {
     Address::Shelley(address)
 }
 
-#[allow(dead_code)]
 pub fn generate_address_with_delegation(
     account_key: &Bip32PrivateKey,
     public_key: &Bip32PublicKey,
@@ -80,7 +72,6 @@ pub fn generate_address_with_delegation(
     Address::Shelley(address)
 }
 
-#[allow(dead_code)]
 pub fn to_ed25519_keypair(private_key: &Bip32PrivateKey) -> (PrivateKey, PublicKey) {
     let private_key = private_key.to_ed25519_private_key();
     let public_key = private_key.public_key();
