@@ -1,4 +1,4 @@
-use std::{pin::Pin, sync::Arc};
+use std::{collections::HashSet, pin::Pin, sync::Arc};
 
 use pallas::ledger::traverse::MultiEraTx;
 use spec::boros::v1::submit::{
@@ -8,11 +8,11 @@ use spec::boros::v1::submit::{
 use tokio::sync::mpsc;
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Response, Status};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     ledger::u5c::U5cDataAdapter,
-    queue::chaining::TxChaining,
+    queue::{chaining::TxChaining, Config, DEFAULT_QUEUE},
     storage::{sqlite::SqliteTransaction, Transaction},
     validation::{evaluate_tx, validate_tx},
 };
@@ -21,6 +21,7 @@ pub struct SubmitServiceImpl {
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
+    queues: HashSet<Config>,
 }
 
 impl SubmitServiceImpl {
@@ -28,11 +29,13 @@ impl SubmitServiceImpl {
         tx_storage: Arc<SqliteTransaction>,
         tx_chaining: Arc<TxChaining>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
+        queues: HashSet<Config>,
     ) -> Self {
         Self {
             tx_storage,
             tx_chaining,
             u5c_adapter,
+            queues,
         }
     }
 }
@@ -55,30 +58,39 @@ impl SubmitService for SubmitServiceImpl {
                 Status::failed_precondition(format!("invalid tx at index {idx}"))
             })?;
 
-            if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
-                error!(?error);
-                continue;
-            }
-
-            if let Err(error) = evaluate_tx(&metx, self.u5c_adapter.clone()).await {
-                error!(?error);
-                continue;
-            }
-
             let hash = metx.hash();
 
-            hashes.push(hash.to_vec().into());
+            let should_validate = tx
+                .queue
+                .as_ref()
+                .and_then(|queue_name| {
+                    self.queues.get(queue_name).or_else(|| {
+                        warn!(queue = ?queue_name, "Queue not found, using default queue");
+                        self.queues.iter().find(|q| q.name == *DEFAULT_QUEUE)
+                    })
+                })
+                .is_none_or(|config| !config.server_signing);
+
+            if should_validate {
+                if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
+                    error!(?error);
+                    continue;
+                }
+
+                if let Err(error) = evaluate_tx(&metx, self.u5c_adapter.clone()).await {
+                    error!(?error);
+                    continue;
+                }
+            }
+
             let mut tx_storage = Transaction::new(hash.to_string(), tx.raw.to_vec());
 
             if let Some(queue) = tx.queue {
                 if self.tx_chaining.is_chained_queue(&queue) {
                     chained_queues.push(queue.clone());
 
-                    if !self
-                        .tx_chaining
-                        .is_valid_token(&queue, &tx.lock_token.unwrap_or_default())
-                        .await
-                    {
+                    let lock_token = tx.lock_token.unwrap_or_default();
+                    if !self.tx_chaining.is_valid_token(&queue, &lock_token).await {
                         return Err(Status::permission_denied("invalid lock token"));
                     }
                 }
@@ -86,6 +98,7 @@ impl SubmitService for SubmitServiceImpl {
                 tx_storage.queue = queue;
             }
 
+            hashes.push(hash.to_vec().into());
             txs.push(tx_storage)
         }
 

@@ -113,16 +113,19 @@ mod priority_tests {
                     name: "default".into(),
                     weight: 1,
                     chained: false,
+                    server_signing: false,
                 },
                 Config {
                     name: "banana".into(),
                     weight: 2,
                     chained: false,
+                    server_signing: false,
                 },
                 Config {
                     name: "orange".into(),
                     weight: 1,
                     chained: false,
+                    server_signing: false,
                 },
             ]),
         );
@@ -155,6 +158,7 @@ mod priority_tests {
                 name: "default".into(),
                 weight: 1,
                 chained: false,
+                server_signing: false,
             }]),
         );
 

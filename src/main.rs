@@ -16,6 +16,7 @@ mod network;
 mod pipeline;
 mod queue;
 mod server;
+mod signing;
 mod storage;
 mod validation;
 
@@ -56,7 +57,7 @@ async fn main() -> Result<()> {
         Arc::clone(&cursor_storage),
     );
     let server = server::run(
-        config.server,
+        config,
         u5c_data_adapter.clone(),
         Arc::clone(&tx_storage),
         Arc::clone(&tx_chaining),
@@ -76,6 +77,7 @@ struct Config {
     #[serde(default)]
     queues: HashSet<queue::Config>,
     u5c: ledger::u5c::Config,
+    signing: signing::Config,
 }
 
 impl Config {

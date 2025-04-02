@@ -7,7 +7,9 @@ use tokio::time::sleep;
 use tracing::info;
 
 use super::CAP;
+use crate::signing::SigningAdapter;
 use crate::validation::{evaluate_tx, validate_tx};
+use crate::Config;
 use crate::{
     ledger::u5c::U5cDataAdapter,
     queue::priority::Priority,
@@ -20,6 +22,8 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
+    secret_adapter: Arc<dyn SigningAdapter>,
+    config: Config,
     pub output: OutputPort<Vec<u8>>,
 }
 
@@ -28,11 +32,15 @@ impl Stage {
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
+        secret_adapter: Arc<dyn SigningAdapter>,
+        config: Config,
     ) -> Self {
         Self {
             storage,
             priority,
             u5c_adapter,
+            secret_adapter,
+            config,
             output: Default::default(),
         }
     }
@@ -78,6 +86,20 @@ impl gasket::framework::Worker<Stage> for Worker {
     ) -> Result<(), WorkerError> {
         for tx in unit {
             let mut tx = tx.clone();
+
+            let should_sign = stage
+                .config
+                .queues
+                .get(&tx.queue)
+                .map(|config| config.server_signing)
+                .unwrap_or(false);
+
+            if should_sign {
+                info!("Signing transaction {} with server key", tx.id);
+                tx.raw = stage.secret_adapter.sign(tx.raw).await.or_retry()?;
+                info!("Transaction {} signed successfully", tx.id);
+            }
+
             let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
 
             if let Err(e) = validate_tx(&metx, stage.u5c_adapter.clone()).await {
@@ -100,7 +122,6 @@ impl gasket::framework::Worker<Stage> for Worker {
                 info!("Failed to broadcast transaction: {}", e);
             } else {
                 info!("Transaction {} broadcasted to receivers", tx.id);
-
                 let tip = stage.u5c_adapter.fetch_tip().await.or_retry()?;
                 tx.status = TransactionStatus::InFlight;
                 tx.slot = Some(tip.0);
@@ -114,12 +135,12 @@ impl gasket::framework::Worker<Stage> for Worker {
 
 #[cfg(test)]
 mod ingest_tests {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
     use std::str::FromStr;
     use std::sync::Arc;
 
     use anyhow::Ok;
-    use pallas::codec::utils::KeyValuePairs;
+
     use pallas::crypto::hash::Hash;
     use pallas::ledger::primitives::conway::{
         CostModels, DRepVotingThresholds, PoolVotingThresholds,
@@ -420,7 +441,7 @@ mod ingest_tests {
                     20744, 32, 25933, 32, 24623, 32, 43053543, 10, 53384111, 14333, 10, 43574283,
                     26308, 10,
                 ]),
-                unknown: KeyValuePairs::from(vec![]),
+                unknown: BTreeMap::new(),
             },
             execution_costs: ExUnitPrices {
                 mem_price: RationalNumber {

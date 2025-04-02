@@ -7,14 +7,14 @@ use tonic::transport::Server;
 use tracing::{error, info};
 
 use crate::{
-    ledger::u5c::U5cDataAdapter, queue::chaining::TxChaining,
-    storage::sqlite::SqliteTransaction,
+    ledger::u5c::U5cDataAdapter, queue::chaining::TxChaining, storage::sqlite::SqliteTransaction,
+    Config as BorosConfig,
 };
 
 mod submit;
 
 pub async fn run(
-    config: Config,
+    config: BorosConfig,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
@@ -30,19 +30,20 @@ pub async fn run(
             Arc::clone(&tx_storage),
             Arc::clone(&tx_chaining),
             Arc::clone(&u5c_adapter),
+            config.queues,
         );
         let submit_service =
             spec::submit::submit_service_server::SubmitServiceServer::new(submit_service);
 
         info!(
-            address = config.listen_address.to_string(),
+            address = config.server.listen_address.to_string(),
             "GRPC server running"
         );
 
         let result = Server::builder()
             .add_service(reflection)
             .add_service(submit_service)
-            .serve(config.listen_address)
+            .serve(config.server.listen_address)
             .await;
 
         if let Err(error) = result {

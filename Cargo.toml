@@ -23,7 +23,7 @@ futures-util = "0.3.31"
 gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["derive"] }
 hex = "0.4.3"
 itertools = "0.14.0"
-pallas = { git = "https://github.com/txpipe/pallas.git", features = ["phase-two"] }
+pallas = { git = "https://github.com/txpipe/pallas.git", features = ["phase2", "wallet"] }
 protoc-wkt = "1.0.0"
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"
@@ -39,3 +39,5 @@ async-stream = "0.3.6"
 tokio-stream = "0.1.17"
 rand = "0.9.0"
 prost = "0.13.5"
+vaultrs = "0.7.4"
+bip39 = "2.1.0"

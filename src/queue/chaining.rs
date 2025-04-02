@@ -176,6 +176,7 @@ mod chaining_tests {
             name: "banana".into(),
             weight: 1,
             chained: true,
+            server_signing: false,
         }]);
 
         let chaining = TxChaining::new(Arc::clone(&storage), queues);
@@ -206,6 +207,7 @@ mod chaining_tests {
             name: "banana".into(),
             weight: 1,
             chained: true,
+            server_signing: false,
         }]);
 
         let chaining = TxChaining::new(Arc::clone(&storage), queues);
@@ -253,11 +255,13 @@ mod chaining_tests {
                 name: "banana".into(),
                 weight: 1,
                 chained: true,
+                server_signing: false,
             },
             Config {
                 name: "orange".into(),
                 weight: 1,
                 chained: true,
+                server_signing: false,
             },
         ]);
 
@@ -305,6 +309,7 @@ mod chaining_tests {
             name: "banana".into(),
             weight: 1,
             chained: true,
+            server_signing: false,
         }]);
 
         let chaining = TxChaining::new(Arc::clone(&storage), queues);
@@ -340,6 +345,7 @@ mod chaining_tests {
             name: "banana".into(),
             weight: 1,
             chained: true,
+            server_signing: false,
         }]);
 
         let chaining = TxChaining::new(Arc::clone(&storage), queues);
@@ -356,6 +362,7 @@ mod chaining_tests {
             name: "banana".into(),
             weight: 1,
             chained: false,
+            server_signing: false,
         }]);
 
         let chaining = TxChaining::new(Arc::clone(&storage), queues);
@@ -372,6 +379,7 @@ mod chaining_tests {
             name: "banana".into(),
             weight: 1,
             chained: true,
+            server_signing: false,
         }]);
 
         let chaining = TxChaining::new(Arc::clone(&storage), queues);
@@ -406,6 +414,7 @@ mod chaining_tests {
             name: "banana".into(),
             weight: 1,
             chained: true,
+            server_signing: false,
         }]);
 
         let chaining = TxChaining::new(Arc::clone(&storage), queues);

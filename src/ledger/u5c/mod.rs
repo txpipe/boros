@@ -1,10 +1,14 @@
-use std::{collections::HashMap, pin::Pin, str::FromStr, vec};
+use std::{
+    collections::{BTreeMap, HashMap},
+    pin::Pin,
+    str::FromStr,
+    vec,
+};
 
 use anyhow::bail;
 use async_stream::stream;
 use futures::{Stream, TryStreamExt};
 use pallas::{
-    codec::utils::KeyValuePairs,
     crypto::hash::Hash,
     interop::utxorpc::spec::{
         cardano::{CostModel, Tx},
@@ -322,7 +326,7 @@ fn map_conway_pparams(pparams: &Params) -> ConwayProtParams {
                             .unwrap_or(CostModel { values: vec![] })
                             .values,
                     ),
-                    unknown: KeyValuePairs::from(vec![]),
+                    unknown: BTreeMap::new(),
                 },
                 execution_costs: ExUnitPrices {
                     mem_price: primitives::RationalNumber {

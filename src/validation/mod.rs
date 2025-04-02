@@ -6,8 +6,8 @@ use pallas::{
         primitives::TransactionInput,
         traverse::{wellknown::GenesisValues, MultiEraInput, MultiEraOutput, MultiEraTx},
         validate::{
-            phase_one, phase_two,
-            uplc::{script_context::SlotConfig, EvalReport},
+            phase1,
+            phase2::{self, script_context::SlotConfig, EvalReport},
             utils::{AccountState, CertState, Environment, UTxOs},
         },
     },
@@ -61,7 +61,7 @@ pub async fn validate_tx(
         pallas_utxos.insert(input, output);
     }
 
-    phase_one::validate_tx(tx, 0, &env, &pallas_utxos, &mut CertState::default())?;
+    phase1::validate_tx(tx, 0, &env, &pallas_utxos, &mut CertState::default())?;
 
     Ok(())
 }
@@ -89,7 +89,7 @@ pub async fn evaluate_tx(
         .map(|((tx_hash, index), eracbor)| (From::from((*tx_hash, *index)), eracbor.clone()))
         .collect();
 
-    let report = phase_two::evaluate_tx(tx, &pparams, &utxos, &slot_config)
+    let report = phase2::evaluate_tx(tx, &pparams, &utxos, &slot_config)
         .map_err(|e| anyhow::anyhow!("Error evaluating transaction: {:?}", e))?;
 
     Ok(report)

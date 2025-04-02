@@ -10,6 +10,7 @@ use crate::{
     },
     network::peer_manager::PeerManager,
     queue::priority::Priority,
+    signing::hashicorp::HashicorpVaultClient,
     storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
@@ -46,12 +47,15 @@ pub async fn run(
 
     let peer_manager = Arc::new(peer_manager);
 
-    let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues));
+    let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues.clone()));
+    let secret_adapter = Arc::new(HashicorpVaultClient::new(config.signing.clone())?);
 
     let mut ingest = ingest::Stage::new(
         tx_storage.clone(),
         priority.clone(),
         u5c_data_adapter.clone(),
+        secret_adapter,
+        config.clone(),
     );
 
     ingest.output.connect(sender);
