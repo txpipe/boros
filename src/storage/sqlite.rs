@@ -180,6 +180,34 @@ impl SqliteTransaction {
         Ok(transactions)
     }
 
+    pub async fn latest(&self, queue: &str) -> Result<Option<Transaction>> {
+        // TODO: Add conditional to remove invalid transactions when there's an invalid status.
+        let transaction = sqlx::query_as::<_, Transaction>(
+            r#"
+                    SELECT
+                    	id,
+                    	raw,
+                    	status,
+                    	slot,
+                    	queue,
+                    	created_at,
+                    	updated_at
+                    FROM
+                        tx
+                    WHERE
+                    	tx.queue = $1
+                    ORDER BY
+                    	created_at DESC
+                    LIMIT 1;
+            "#,
+        )
+        .bind(queue)
+        .fetch_optional(&self.sqlite.db)
+        .await?;
+
+        Ok(transaction)
+    }
+
     pub async fn next(
         &self,
         status: TransactionStatus,
@@ -412,9 +440,14 @@ pub mod sqlite_utils_tests {
 mod sqlite_transaction_tests {
     use std::collections::HashMap;
 
-    use crate::storage::{
-        sqlite::sqlite_utils_tests::{mock_sqlite_transaction, TransactionList},
-        Transaction, TransactionStatus,
+    use chrono::{Days, Utc};
+
+    use crate::{
+        queue::DEFAULT_QUEUE,
+        storage::{
+            sqlite::sqlite_utils_tests::{mock_sqlite_transaction, TransactionList},
+            Transaction, TransactionStatus,
+        },
     };
 
     #[tokio::test]
@@ -586,6 +619,41 @@ mod sqlite_transaction_tests {
         let result = storage.find_to_rollback(10).await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn it_should_find_latest() {
+        let storage = mock_sqlite_transaction().await;
+
+        let transactions = vec![
+            Transaction {
+                id: "1".into(),
+                created_at: Utc::now().checked_sub_days(Days::new(5)).unwrap(),
+                updated_at: Utc::now().checked_sub_days(Days::new(5)).unwrap(),
+                ..Default::default()
+            },
+            Transaction {
+                id: "2".into(),
+                ..Default::default()
+            },
+        ];
+
+        storage.create(&transactions).await.unwrap();
+
+        let result = storage.latest(DEFAULT_QUEUE).await;
+        assert!(result.is_ok());
+        assert!(result.as_ref().unwrap().is_some());
+        let transaction = result.unwrap().unwrap();
+        assert!(transaction.id == "2".to_string());
+    }
+
+    #[tokio::test]
+    async fn it_should_return_empty_latest() {
+        let storage = mock_sqlite_transaction().await;
+
+        let result = storage.latest(DEFAULT_QUEUE).await;
+        assert!(result.is_ok());
+        assert!(result.as_ref().unwrap().is_none());
     }
 }
 

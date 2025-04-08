@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use gasket::messaging::tokio::ChannelSendAdapter;
 
 use crate::{
     ledger::{
         relay::{MockRelayDataAdapter, RelayDataAdapter},
-        u5c::{Point, U5cDataAdapterImpl},
+        u5c::{Point, U5cDataAdapter},
     },
-    priority::Priority,
+    network::peer_manager::PeerManager,
+    queue::priority::Priority,
+    signing::hashicorp::HashicorpVaultClient,
     storage::{
         sqlite::{SqliteCursor, SqliteTransaction},
         Cursor,
@@ -15,32 +18,47 @@ use crate::{
     Config,
 };
 
-pub mod fanout;
 pub mod ingest;
 pub mod monitor;
+pub mod peer_discovery;
 
 const CAP: u16 = 50;
 
 pub async fn run(
     config: Config,
+    u5c_data_adapter: Arc<dyn U5cDataAdapter>,
     tx_storage: Arc<SqliteTransaction>,
     cursor_storage: Arc<SqliteCursor>,
 ) -> Result<()> {
-    let cursor = cursor_storage.current().await?.map(|c| c.into());
     let relay_adapter: Arc<dyn RelayDataAdapter + Send + Sync> =
         Arc::new(MockRelayDataAdapter::new());
-    let u5c_data_adapter = Arc::new(U5cDataAdapterImpl::try_new(config.u5c, cursor).await?);
 
-    let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues));
+    let (sender, _) = gasket::messaging::tokio::broadcast_channel::<Vec<u8>>(CAP as usize);
 
-    let ingest = ingest::Stage::new(tx_storage.clone(), priority.clone());
-    let fanout = fanout::Stage::new(
-        config.peer_manager,
-        relay_adapter.clone(),
-        u5c_data_adapter.clone(),
+    let broadcast_sender = match &sender {
+        ChannelSendAdapter::Broadcast(sender) => sender.clone(),
+        _ => panic!("Expected broadcast sender"),
+    };
+
+    let peer_addrs = config.peer_manager.peers.clone();
+    let peer_manager = PeerManager::new(2, peer_addrs, broadcast_sender);
+
+    peer_manager.init().await?;
+
+    let peer_manager = Arc::new(peer_manager);
+
+    let priority = Arc::new(Priority::new(tx_storage.clone(), config.queues.clone()));
+    let secret_adapter = Arc::new(HashicorpVaultClient::new(config.signing.clone())?);
+
+    let mut ingest = ingest::Stage::new(
         tx_storage.clone(),
         priority.clone(),
+        u5c_data_adapter.clone(),
+        secret_adapter,
+        config.clone(),
     );
+
+    ingest.output.connect(sender);
 
     let monitor = monitor::Stage::new(
         config.monitor,
@@ -48,14 +66,19 @@ pub async fn run(
         tx_storage.clone(),
         cursor_storage.clone(),
     );
+    let peer_discovery = peer_discovery::Stage::new(
+        config.peer_manager.clone(),
+        peer_manager.clone(),
+        relay_adapter,
+    );
 
     let policy: gasket::runtime::Policy = Default::default();
 
     let ingest = gasket::runtime::spawn_stage(ingest, policy.clone());
-    let fanout = gasket::runtime::spawn_stage(fanout, policy.clone());
     let monitor = gasket::runtime::spawn_stage(monitor, policy.clone());
+    let peer_discovery = gasket::runtime::spawn_stage(peer_discovery, policy.clone());
 
-    let daemon = gasket::daemon::Daemon::new(vec![ingest, fanout, monitor]);
+    let daemon = gasket::daemon::Daemon::new(vec![ingest, monitor, peer_discovery]);
     daemon.block();
 
     Ok(())

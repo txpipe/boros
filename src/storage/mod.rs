@@ -3,7 +3,7 @@ use std::{fmt::Display, str::FromStr};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::priority::DEFAULT_QUEUE;
+use crate::queue::DEFAULT_QUEUE;
 
 pub mod sqlite;
 
@@ -28,8 +28,7 @@ impl Transaction {
         Self {
             id,
             raw,
-            //status: TransactionStatus::Pending,
-            status: TransactionStatus::Validated,
+            status: TransactionStatus::Pending,
             queue: DEFAULT_QUEUE.into(),
             slot: None,
             dependencies: None,
@@ -39,12 +38,13 @@ impl Transaction {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionStatus {
     Pending,
     Validated,
     InFlight,
     Confirmed,
+    Failed,
 }
 impl FromStr for TransactionStatus {
     type Err = anyhow::Error;
@@ -55,6 +55,7 @@ impl FromStr for TransactionStatus {
             "validated" => Ok(Self::Validated),
             "inflight" => Ok(Self::InFlight),
             "confirmed" => Ok(Self::Confirmed),
+            "failed" => Ok(Self::Failed),
             _ => Err(anyhow::Error::msg("transaction status not supported")),
         }
     }
@@ -66,6 +67,7 @@ impl Display for TransactionStatus {
             Self::Validated => write!(f, "validated"),
             Self::InFlight => write!(f, "inflight"),
             Self::Confirmed => write!(f, "confirmed"),
+            Self::Failed => write!(f, "failed"),
         }
     }
 }

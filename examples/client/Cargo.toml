@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+spec = { version = "0.1.0", path = "../../spec/gen/rust" }
+
 hex = "0.4.3"
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
 tonic = "0.12.3"

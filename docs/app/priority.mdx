@@ -11,5 +11,6 @@ Follow the [configuration](./configuration) to configure the priority queues.
 ### Example
 Two queues are configured: Queue A with a weight of 3 and Queue B with a weight of 2. Since Queue A has a higher weight, it receives more slots than Queue B. Specifically, the total available slots are distributed proportionally based on weight, giving Queue A 60% of the slots and Queue B 40%. This ensures that Queue A has higher priority when distributing transactions.
 
+
 ### Default
 Priority configurations are not required. If not configured, the default queue is used. The default queue has a weight of 1 but can be replaced by setting a configuration with the name default. Transactions with unknown queues are processed using the default weight.
