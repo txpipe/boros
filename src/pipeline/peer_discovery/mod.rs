@@ -6,7 +6,13 @@ use thiserror::Error;
 use tokio::time::sleep;
 use tracing::info;
 
-use crate::{ledger::relay::RelayDataAdapter, network::{peer::PeerError, peer_manager::{PeerManager, PeerManagerConfig, PeerManagerError}}};
+use crate::{
+    ledger::relay::RelayDataAdapter,
+    network::{
+        peer::PeerError,
+        peer_manager::{PeerManager, PeerManagerConfig, PeerManagerError},
+    },
+};
 
 #[derive(Error, Debug)]
 pub enum FanoutError {

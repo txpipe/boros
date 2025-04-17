@@ -2,6 +2,7 @@ use bip39::Mnemonic;
 use pallas::{
     ledger::traverse::MultiEraTx,
     txbuilder::{BuildConway, BuiltTransaction, Bytes, Bytes32, StagingTransaction},
+    wallet::keystore::PrivateKey,
 };
 
 use super::derive::get_ed25519_keypair;
@@ -22,7 +23,10 @@ pub fn to_built_transaction(tx: &MultiEraTx) -> BuiltTransaction {
 
 pub fn sign_transaction(built_tx: BuiltTransaction, mnemonic: &Mnemonic) -> BuiltTransaction {
     let (signing_key, _) = get_ed25519_keypair(mnemonic);
-    let signed_tx = built_tx.sign(signing_key);
+    let signed_tx = match signing_key {
+        PrivateKey::Normal(secret_key) => built_tx.sign(&secret_key),
+        PrivateKey::Extended(secret_key_extended) => built_tx.sign(&secret_key_extended),
+    };
     match signed_tx {
         Ok(tx) => tx,
         _ => panic!("Failed to sign transaction"),
