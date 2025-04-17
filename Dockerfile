@@ -3,7 +3,7 @@ FROM rust:1.85.0-slim-bullseye AS build
 WORKDIR /app
 
 RUN apt update
-RUN apt install -y build-essential pkg-config libssl-dev libsasl2-dev cmake
+RUN apt install -y build-essential pkg-config libssl-dev libsasl2-dev cmake m4
 
 COPY ./Cargo.toml ./Cargo.toml
 COPY . .
