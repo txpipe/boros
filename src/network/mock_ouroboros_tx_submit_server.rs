@@ -203,13 +203,14 @@ impl MockOuroborosTxSubmitPeerServer {
 mod broadcast_tests {
 
     use pallas::{
+        codec::minicbor,
         crypto::hash::Hash,
         ledger::primitives::{
             conway::{
-                PostAlonzoTransactionOutput, PseudoTransactionOutput, TransactionBody, Tx, Value,
+                PostAlonzoTransactionOutput, TransactionBody, TransactionOutput, Tx, Value,
                 WitnessSet,
             },
-            Fragment, TransactionInput,
+            TransactionInput,
         },
     };
     use tracing::info;
@@ -354,12 +355,15 @@ mod broadcast_tests {
                 index: i as u64,
             };
 
-            let output = PseudoTransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
-                address: vec![100 + i as u8; 28].into(),
-                value: Value::Coin((i as u64 + 1) * 1_000_000),
-                datum_option: None,
-                script_ref: None,
-            });
+            let output = TransactionOutput::PostAlonzo(
+                PostAlonzoTransactionOutput {
+                    address: vec![100 + i as u8; 28].into(),
+                    value: Value::Coin((i as u64 + 1) * 1_000_000),
+                    datum_option: None,
+                    script_ref: None,
+                }
+                .into(),
+            );
 
             let tx = Tx {
                 transaction_body: TransactionBody {
@@ -383,7 +387,8 @@ mod broadcast_tests {
                     proposal_procedures: None,
                     treasury_value: None,
                     donation: None,
-                },
+                }
+                .into(),
                 transaction_witness_set: WitnessSet {
                     vkeywitness: None,
                     native_script: None,
@@ -393,20 +398,15 @@ mod broadcast_tests {
                     plutus_v3_script: None,
                     plutus_data: None,
                     redeemer: None,
-                },
+                }
+                .into(),
                 success: true,
                 auxiliary_data: None.into(),
             };
 
             // Serialize the transaction to CBOR bytes
-            match tx.encode_fragment() {
-                Ok(bytes) => sample_txs.push(bytes),
-                Err(e) => {
-                    // Log error but continue with other transactions
-                    tracing::error!("Failed to serialize transaction: {:?}", e);
-                    continue;
-                }
-            }
+            let payload = minicbor::to_vec(tx).unwrap();
+            sample_txs.push(payload);
         }
 
         sample_txs
