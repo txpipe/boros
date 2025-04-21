@@ -39,6 +39,12 @@ uri = "https://mainnet.utxorpc-v0.demeter.run"
 [[queues]]
 name = "banana"
 weight = 2
+
+[signing]
+api_addr = "http://127.0.0.1:8200"
+token = "your root token"
+path = "path"
+key = "key"
 ```
 
 ### `storage` section
@@ -109,15 +115,51 @@ The `u5c.metadata` section is optional and defines metadata for U5C connection, 
 
 The `queues` section defines the options to create queues.
 
-| property | type    | example    |
-| -------- | ------- | ---------- |
-| name     | string  | queue_name |
-| weight   | number  | 2          |
-| chained  | bool    | true       |
+| property        | type    | example    |
+| --------------- | ------- | ---------- |
+| name            | string  | queue_name |
+| weight          | number  | 2          |
+| chained         | bool    | true       |
+| server_signing  | bool    | true       |
 
 - `name`: queue name that can be used in sending transactions.
 - `weight`: the weight of the queue. A queue with a bigger weight will have more priority to process transactions.
 - `chained`: define the queue's behaviour, when it's true, to send a transaction to the queue it's required to lock the state first.
+- `server_signing`: indicates whether the queue can sign unsigned transactions.
+
+### `signing` section
+
+The `signing` section defines the hashicorp vault configurations.
+
+| property | type    | example                 |
+| -------- | ------- | ----------------------- |
+| api_addr | string  | "http://127.0.0.1:8200" |
+| token    | string  | "your root token"       |
+| path     | string  | "path"                  |
+| key      | string  | "key"                   |
+
+Local installation guide: [Hashicorp Vault Installation](https://developer.hashicorp.com/vault/docs/install)
+
+After installation, run the vault server via either of the following:
+- `vault server -dev`: This automatically generates a root token, which is printed at the bottom of the Vault server logs.
+- `vault server -dev -dev-root-token-id="custom-root-token`: This will allow you to generate your own `custom root token`
+
+In either case, copy the root token and paste it into the token field in the signing configuration.
+
+Once the server runs, login to hashicorp vault via:
+- `export VAULT_ADDR='http://127.0.0.1:8200'`
+- `vault login your-root-token`
+
+After logging in successfully, you can manually store a secret using either of the following methods:
+- [Hashicorp Vault UI](http://127.0.0.1:8200/ui): In the dashboard, since we're using Hashicorp Vault's `kv secret engine`, click on the `secret/` item under Secret Engines. Create your own secret — this will be the value for the `path` field in the signing config. Under secret data, specify the `key-value pair`. The `key` will correspond to the key field in the signing config.
+- `vault kv put secret/secret-name key="value"`: Alternatively, use this CLI command to store a secret directly.
+
+Note that this is the case for hashicorp vault's secret storage, at least for kv secret engine. You can store multiple key-value pairs under one secret / path.
+
+- `api_addr`: The local hashicorp vault api address.
+- `token`: Used mainly for authentication. Can either be automatically or manually generated when vault server runs.
+- `path`: The path or basically the name of the secret.
+- `key`: The key to be retrieved and be used for signing.
 
 ## Tips
 

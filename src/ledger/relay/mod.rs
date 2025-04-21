@@ -18,7 +18,7 @@ impl RelayDataAdapter for MockRelayDataAdapter {
 
 impl MockRelayDataAdapter {
     pub fn new() -> Self {
-        Self { 
+        Self {
             mock_relays: vec![
                 "109.205.181.113:7900".to_string(),
                 "194.163.149.210:6000".to_string(),
@@ -30,8 +30,8 @@ impl MockRelayDataAdapter {
                 "preview.leadstakepool.com:3002".to_string(),
                 "relay.preview.cardanostakehouse.com:11000".to_string(),
                 "130.162.231.122:6001".to_string(),
-            ]
-         }
+            ],
+        }
     }
 }
 
@@ -41,7 +41,7 @@ mod tests {
     use tokio::test;
 
     /// A mock provider that returns a pre-defined list of string addresses, e.g., ["relay1:3001", "relay2:3002"].
-    
+
     #[test]
     async fn it_returns_mock_relays() {
         let provider = MockRelayDataAdapter {

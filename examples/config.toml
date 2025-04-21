@@ -27,3 +27,10 @@ uri = "https://mainnet.utxorpc-v0.demeter.run"
 name = "banana"
 weight = 2
 chained = false
+server_signing = true
+
+[signing]
+api_addr = "http://127.0.0.1:8200"
+token = "your root token"
+path = "path"
+key = "key"
