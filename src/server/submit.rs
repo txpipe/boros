@@ -69,7 +69,8 @@ impl SubmitService for SubmitServiceImpl {
                         self.queues.iter().find(|q| q.name == *DEFAULT_QUEUE)
                     })
                 })
-                .is_none_or(|config| !config.server_signing);
+                .map(|cfg| cfg.server_signing)
+                .is_none_or(|server_signing| !server_signing);
 
             if should_validate {
                 if let Err(error) = validate_tx(&metx, self.u5c_adapter.clone()).await {
