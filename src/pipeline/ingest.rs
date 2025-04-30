@@ -91,8 +91,8 @@ impl gasket::framework::Worker<Stage> for Worker {
                 .config
                 .queues
                 .get(&tx.queue)
-                .map(|config| config.server_signing)
-                .unwrap_or(false);
+                .ok_or(WorkerError::Retry)?
+                .server_signing;
 
             if should_sign {
                 let signer = stage.signing_adapter.as_ref().ok_or(WorkerError::Retry)?;
