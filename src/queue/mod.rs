@@ -15,6 +15,7 @@ pub struct Config {
     pub weight: u8,
     #[serde(default)]
     pub chained: bool,
+    #[serde(default)]
     pub server_signing: bool,
 }
 impl Default for Config {

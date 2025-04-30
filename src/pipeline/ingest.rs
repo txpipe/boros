@@ -22,7 +22,7 @@ pub struct Stage {
     storage: Arc<SqliteTransaction>,
     priority: Arc<Priority>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
-    secret_adapter: Arc<dyn SigningAdapter>,
+    signing_adapter: Option<Arc<dyn SigningAdapter>>,
     config: Config,
     pub output: OutputPort<Vec<u8>>,
 }
@@ -32,14 +32,14 @@ impl Stage {
         storage: Arc<SqliteTransaction>,
         priority: Arc<Priority>,
         u5c_adapter: Arc<dyn U5cDataAdapter>,
-        secret_adapter: Arc<dyn SigningAdapter>,
+        signing_adapter: Option<Arc<dyn SigningAdapter>>,
         config: Config,
     ) -> Self {
         Self {
             storage,
             priority,
             u5c_adapter,
-            secret_adapter,
+            signing_adapter,
             config,
             output: Default::default(),
         }
@@ -91,13 +91,13 @@ impl gasket::framework::Worker<Stage> for Worker {
                 .config
                 .queues
                 .get(&tx.queue)
-                .map(|config| config.server_signing)
-                .unwrap_or(false);
+                .ok_or(WorkerError::Retry)?
+                .server_signing;
 
             if should_sign {
-                info!("Signing transaction {} with server key", tx.id);
-                tx.raw = stage.secret_adapter.sign(tx.raw).await.or_retry()?;
-                info!("Transaction {} signed successfully", tx.id);
+                let signer = stage.signing_adapter.as_ref().ok_or(WorkerError::Retry)?;
+                tx.raw = signer.sign(tx.raw).await.or_retry()?;
+                info!(tx_id = %tx.id, "Transaction signed with server key");
             }
 
             let metx = MultiEraTx::decode(&tx.raw).map_err(|_| WorkerError::Recv)?;
