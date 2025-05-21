@@ -77,7 +77,7 @@ struct Config {
     #[serde(default)]
     queues: HashSet<queue::Config>,
     u5c: ledger::u5c::Config,
-    signing: signing::Config,
+    signing: Option<signing::Config>,
 }
 
 impl Config {
