@@ -8,7 +8,8 @@ use queue::{chaining::TxChaining, DEFAULT_QUEUE};
 use serde::Deserialize;
 use storage::sqlite::{SqliteCursor, SqliteStorage, SqliteTransaction};
 use tokio::try_join;
-use tracing::Level;
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, Level};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod ledger;
@@ -34,6 +35,8 @@ async fn main() -> Result<()> {
         .with(env_filter)
         .init();
 
+    let cancellation_token = cancellation_token();
+
     let config = Config::new().expect("invalid config file");
 
     let storage = Arc::new(SqliteStorage::new(path::Path::new(&config.storage.db_path)).await?);
@@ -56,16 +59,33 @@ async fn main() -> Result<()> {
         Arc::clone(&tx_storage),
         Arc::clone(&cursor_storage),
     );
-    let server = server::run(
-        config,
+    let server = server::serve(
+        config.server.clone(),
+        config.queues.clone(),
         u5c_data_adapter.clone(),
         Arc::clone(&tx_storage),
         Arc::clone(&tx_chaining),
+        cancellation_token.clone(),
     );
 
     try_join!(pipeline, server)?;
 
     Ok(())
+}
+
+fn cancellation_token() -> CancellationToken {
+    let cancel = CancellationToken::new();
+
+    let cancel2 = cancel.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for Ctrl+C");
+        debug!("shutdown signal received");
+        cancel2.cancel();
+    });
+
+    cancel
 }
 
 #[derive(Deserialize, Clone)]
