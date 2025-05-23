@@ -35,6 +35,12 @@ pub async fn run(
 
     let mut module = RpcModule::new(Context {});
 
+    module.register_async_method("trp.resolve", |params, context, _| async {
+        methods::trp_resolve(params, context).await
+    })?;
+    module.register_async_method("trp.submit", |params, context, _| async {
+        methods::trp_submit(params, context).await
+    })?;
     module.register_method("health", |_, context, _| methods::health(context))?;
 
     info!(
