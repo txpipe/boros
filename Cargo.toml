@@ -23,7 +23,6 @@ futures-util = "0.3.31"
 gasket = { git = "https://github.com/construkts/gasket-rs.git", features = ["derive"] }
 hex = "0.4.3"
 itertools = "0.14.0"
-pallas = { version = "1.0.0-alpha.1", features = ["phase2", "wallet"] }
 protoc-wkt = "1.0.0"
 serde = { version = "1.0.217", features = ["derive"] }
 thiserror = "2.0.11"
@@ -40,4 +39,18 @@ tokio-stream = "0.1.17"
 rand = "0.9.0"
 prost = "0.13.5"
 vaultrs = "0.7.4"
+tonic = { version = "0.12.3", features = ["transport", "tls", "tls-webpki-roots", "tls-roots"] }
+tower-http = { version = "0.6.4", features = ["cors", "trace"]}
+tonic-reflection = { version = "0.12.3" }
+jsonrpsee = { version = "0.25.1", features = ["server", "client"] }
+tower = "0.5.2"
+tokio-util = { version = "0.7.15", features = ["rt"] }
+
+pallas = { version = "1.0.0-alpha.2", features = ["phase2"] }
+# pallas = { git = "https://github.com/txpipe/pallas.git", features = ["hardano"] }
+
+tx3-lang = { git = "https://github.com/tx3-lang/tx3.git" }
+tx3-cardano = { git = "https://github.com/tx3-lang/tx3.git" }
+cryptoxide = "0.5.0"
+ed25519-bip32 = "0.4.1"
 bip39 = "2.1.0"
