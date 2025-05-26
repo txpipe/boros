@@ -1,61 +1,72 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::Result;
+use futures::try_join;
 use serde::Deserialize;
-use spec::boros::v1 as spec;
-use tonic::transport::Server;
-use tracing::{error, info};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ledger::u5c::U5cDataAdapter, queue::chaining::TxChaining, storage::sqlite::SqliteTransaction,
-    Config as BorosConfig,
+    ledger::u5c::U5cDataAdapter,
+    queue::{self, chaining::TxChaining},
+    storage::sqlite::SqliteTransaction,
 };
 
-mod submit;
+mod grpc;
+mod trp;
 
-pub async fn run(
-    config: BorosConfig,
+pub async fn serve(
+    config: Config,
+    queues: HashSet<queue::Config>,
     u5c_adapter: Arc<dyn U5cDataAdapter>,
     tx_storage: Arc<SqliteTransaction>,
     tx_chaining: Arc<TxChaining>,
+    cancellation_token: CancellationToken,
 ) -> Result<()> {
-    tokio::spawn(async move {
-        let reflection = tonic_reflection::server::Builder::configure()
-            .register_encoded_file_descriptor_set(protoc_wkt::google::protobuf::FILE_DESCRIPTOR_SET)
-            .register_encoded_file_descriptor_set(spec::submit::FILE_DESCRIPTOR_SET)
-            .build_v1alpha()
-            .unwrap();
+    let grpc_task = config.grpc.map(|cfg| {
+        let queues = queues.clone();
+        let u5c_adapter = Arc::clone(&u5c_adapter);
+        let tx_storage = Arc::clone(&tx_storage);
+        let tx_chaining = Arc::clone(&tx_chaining);
+        let cancellation_token = cancellation_token.clone();
 
-        let submit_service = submit::SubmitServiceImpl::new(
-            Arc::clone(&tx_storage),
-            Arc::clone(&tx_chaining),
-            Arc::clone(&u5c_adapter),
-            config.queues,
-        );
-        let submit_service =
-            spec::submit::submit_service_server::SubmitServiceServer::new(submit_service);
-
-        info!(
-            address = config.server.listen_address.to_string(),
-            "GRPC server running"
-        );
-
-        let result = Server::builder()
-            .add_service(reflection)
-            .add_service(submit_service)
-            .serve(config.server.listen_address)
-            .await;
-
-        if let Err(error) = result {
-            error!(?error);
-            std::process::exit(1);
-        }
+        tokio::spawn(grpc::run(
+            cfg,
+            queues,
+            u5c_adapter,
+            tx_storage,
+            tx_chaining,
+            cancellation_token,
+        ))
     });
+
+    let trp_task = config.trp.map(|cfg| {
+        let tx_storage = Arc::clone(&tx_storage);
+        let u5c_adapter = Arc::clone(&u5c_adapter);
+        let cancellation_token = cancellation_token.clone();
+        tokio::spawn(trp::run(cfg, tx_storage, u5c_adapter, cancellation_token))
+    });
+
+    try_join!(
+        async {
+            if let Some(task) = grpc_task {
+                return task.await?;
+            }
+
+            Ok(())
+        },
+        async {
+            if let Some(task) = trp_task {
+                return task.await?;
+            }
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
 
 #[derive(Deserialize, Clone)]
 pub struct Config {
-    pub listen_address: SocketAddr,
+    pub grpc: Option<grpc::Config>,
+    pub trp: Option<trp::Config>,
 }
