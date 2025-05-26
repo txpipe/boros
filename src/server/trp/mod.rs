@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use anyhow::{Error, Result};
 use jsonrpsee::server::{RpcModule, Server};
@@ -9,16 +9,21 @@ use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
-use crate::storage::sqlite::SqliteTransaction;
+use crate::{ledger::u5c::U5cDataAdapter, storage::sqlite::SqliteTransaction};
 
 mod methods;
 
 #[derive(Clone)]
-pub struct Context {}
+pub struct Context {
+    config: Config,
+    tx_storage: Arc<SqliteTransaction>,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
+}
 
 pub async fn run(
     config: Config,
-    _tx_storage: Arc<SqliteTransaction>,
+    tx_storage: Arc<SqliteTransaction>,
+    u5c_adapter: Arc<dyn U5cDataAdapter>,
     cancellation_token: CancellationToken,
 ) -> Result<()> {
     let cors_layer = if config.permissive_cors.unwrap_or_default() {
@@ -33,7 +38,11 @@ pub async fn run(
         .build(config.listen_address)
         .await?;
 
-    let mut module = RpcModule::new(Context {});
+    let mut module = RpcModule::new(Context {
+        config: config.clone(),
+        tx_storage: tx_storage.clone(),
+        u5c_adapter: u5c_adapter.clone(),
+    });
 
     module.register_async_method("trp.resolve", |params, context, _| async {
         methods::trp_resolve(params, context).await
@@ -41,7 +50,10 @@ pub async fn run(
     module.register_async_method("trp.submit", |params, context, _| async {
         methods::trp_submit(params, context).await
     })?;
-    module.register_method("health", |_, context, _| methods::health(context))?;
+
+    module.register_async_method("health", |_, context, _| async {
+        methods::health(context).await
+    })?;
 
     info!(
         address = config.listen_address.to_string(),
@@ -67,9 +79,15 @@ pub async fn run(
     Ok(())
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
+pub struct ServerConfig {
+    pub uri: String,
+    pub headers: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
+    pub server: ServerConfig,
     pub listen_address: SocketAddr,
-    pub max_optimize_rounds: u8,
     pub permissive_cors: Option<bool>,
 }

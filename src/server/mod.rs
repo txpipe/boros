@@ -29,34 +29,34 @@ pub async fn serve(
         let tx_chaining = Arc::clone(&tx_chaining);
         let cancellation_token = cancellation_token.clone();
 
-        grpc::run(
+        tokio::spawn(grpc::run(
             cfg,
             queues,
             u5c_adapter,
             tx_storage,
             tx_chaining,
             cancellation_token,
-        )
+        ))
     });
 
     let trp_task = config.trp.map(|cfg| {
         let tx_storage = Arc::clone(&tx_storage);
+        let u5c_adapter = Arc::clone(&u5c_adapter);
         let cancellation_token = cancellation_token.clone();
-
-        trp::run(cfg, tx_storage, cancellation_token)
+        tokio::spawn(trp::run(cfg, tx_storage, u5c_adapter, cancellation_token))
     });
 
     try_join!(
         async {
             if let Some(task) = grpc_task {
-                return task.await;
+                return task.await?;
             }
 
             Ok(())
         },
         async {
             if let Some(task) = trp_task {
-                return task.await;
+                return task.await?;
             }
             Ok(())
         },

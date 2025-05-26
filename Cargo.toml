@@ -45,3 +45,4 @@ tonic-reflection = { version = "0.12.3" }
 jsonrpsee = { version = "0.25.1", features = ["server", "client"] }
 tower = "0.5.2"
 tokio-util = { version = "0.7.15", features = ["rt"] }
+base64 = "0.22.1"
