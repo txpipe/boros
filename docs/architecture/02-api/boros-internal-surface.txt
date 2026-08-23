@@ -1,0 +1,171 @@
+GENERATED 2026-08-23 by cairn-survey @ fdec4da via `cargo modules structure --bin boros`.
+NOTE: internal public-item surface of a bin-only crate — NOT a semver API surface (cargo public-api inapplicable; see 00-shape.md deviation notes).
+
+
+crate boros
+├── struct Config: pub(crate)
+│   └── fn new: pub
+├── mod ledger: pub(crate)
+│   ├── mod relay: pub
+│   │   ├── struct MockRelayDataAdapter: pub
+│   │   │   ├── async fn get_relays: pub(self)
+│   │   │   └── fn new: pub
+│   │   └── trait RelayDataAdapter: pub
+│   └── mod u5c: pub
+│       ├── type ChainSyncStream: pub
+│       ├── struct Config: pub
+│       ├── enum Event: pub
+│       ├── type Point: pub
+│       ├── trait U5cDataAdapter: pub
+│       ├── struct U5cDataAdapterImpl: pub
+│       │   ├── async fn fetch_pparams: pub(self)
+│       │   ├── async fn fetch_tip: pub(self)
+│       │   ├── async fn fetch_utxos: pub(self)
+│       │   ├── fn interceptor: pub(self)
+│       │   ├── async fn stream: pub(self)
+│       │   └── async fn try_new: pub
+│       ├── fn map_conway_pparams: pub(self)
+│       └── fn map_multi_era_pparams: pub(self)
+├── async fn main: pub(crate)
+├── mod network: pub(crate)
+│   ├── mod mempool: pub
+│   │   ├── struct Event: pub
+│   │   ├── struct Mempool: pub
+│   │   │   ├── fn acknowledge: pub
+│   │   │   ├── fn find_inflight: pub
+│   │   │   ├── fn new: pub
+│   │   │   ├── fn notify: pub
+│   │   │   ├── fn receive: pub(self)
+│   │   │   └── fn receive_raw: pub
+│   │   ├── enum MempoolError: pub
+│   │   ├── struct MempoolState: pub(self)
+│   │   ├── struct Tx: pub
+│   │   ├── type TxHash: pub(self)
+│   │   └── enum TxStage: pub
+│   ├── mod mock_ouroboros_tx_submit_server: pub
+│   │   └── struct MockOuroborosTxSubmitPeerServer: pub
+│   │       ├── async fn init: pub
+│   │       ├── fn new: pub
+│   │       └── async fn start_background_task: pub(self)
+│   ├── mod peer: pub
+│   │   ├── struct Peer: pub
+│   │   │   ├── async fn collect_transactions: pub(self)
+│   │   │   ├── async fn discover_peers: pub
+│   │   │   ├── async fn init: pub
+│   │   │   ├── fn new: pub
+│   │   │   ├── async fn propagate_txs: pub(self)
+│   │   │   ├── async fn query_peer_sharing_mode: pub
+│   │   │   └── fn start_background_task: pub(self)
+│   │   └── enum PeerError: pub
+│   └── mod peer_manager: pub
+│       ├── struct PeerManager: pub
+│       │   ├── async fn add_peer: pub
+│       │   ├── async fn connected_peers_count: pub
+│       │   ├── async fn init: pub
+│       │   ├── async fn is_peer_exist: pub
+│       │   ├── fn new: pub
+│       │   └── async fn pick_peer_rand: pub
+│       ├── struct PeerManagerConfig: pub
+│       └── enum PeerManagerError: pub
+├── mod pipeline: pub(crate)
+│   ├── mod ingest: pub
+│   │   ├── struct Stage: pub
+│   │   │   └── fn new: pub
+│   │   └── struct Worker: pub
+│   │       ├── async fn bootstrap: pub(self)
+│   │       ├── async fn execute: pub(self)
+│   │       └── async fn schedule: pub(self)
+│   ├── mod monitor: pub
+│   │   ├── struct Config: pub
+│   │   ├── struct Stage: pub
+│   │   │   └── fn new: pub
+│   │   └── struct Worker: pub
+│   │       ├── async fn bootstrap: pub(self)
+│   │       ├── async fn execute: pub(self)
+│   │       └── async fn schedule: pub(self)
+│   ├── mod peer_discovery: pub
+│   │   ├── enum FanoutError: pub
+│   │   ├── struct Stage: pub
+│   │   │   └── fn new: pub
+│   │   └── struct Worker: pub
+│   │       ├── async fn bootstrap: pub(self)
+│   │       ├── async fn execute: pub(self)
+│   │       └── async fn schedule: pub(self)
+│   └── async fn run: pub
+├── mod queue: pub(crate)
+│   ├── struct Config: pub
+│   ├── mod chaining: pub
+│   │   ├── type LockEvent: pub(self)
+│   │   └── struct TxChaining: pub
+│   │       ├── fn is_chained_queue: pub
+│   │       ├── async fn is_valid_token: pub
+│   │       ├── async fn lock: pub
+│   │       ├── fn new: pub
+│   │       └── async fn unlock: pub
+│   └── mod priority: pub
+│       └── struct Priority: pub
+│           ├── fn new: pub
+│           ├── async fn next: pub
+│           └── fn quota: pub(self)
+├── mod server: pub(crate)
+│   ├── struct Config: pub
+│   ├── async fn run: pub
+│   └── mod submit: pub(self)
+│       └── struct SubmitServiceImpl: pub
+│           └── fn new: pub
+├── mod signing: pub(crate)
+│   ├── struct Config: pub
+│   ├── struct Secret: pub(self)
+│   ├── trait SigningAdapter: pub
+│   ├── enum SigningError: pub
+│   ├── mod hashicorp: pub
+│   │   └── struct HashicorpVaultClient: pub
+│   │       ├── async fn get_mnemonic: pub(self)
+│   │       ├── fn new: pub
+│   │       ├── async fn sign: pub(self)
+│   │       └── async fn verify: pub(self)
+│   └── mod key: pub
+│       ├── mod derive: pub
+│       │   ├── fn from_bip39_mnenomic: pub(self)
+│       │   ├── fn generate_account_key: pub
+│       │   ├── fn generate_address: pub
+│       │   ├── fn generate_address_with_delegation: pub
+│       │   ├── fn generate_delegation_keypair: pub
+│       │   ├── fn generate_payment_keypair: pub
+│       │   ├── fn get_ed25519_keypair: pub
+│       │   └── fn to_ed25519_keypair: pub
+│       └── mod sign: pub
+│           ├── fn sign_transaction: pub
+│           └── fn to_built_transaction: pub
+├── mod storage: pub(crate)
+│   ├── struct Config: pub
+│   ├── struct Cursor: pub
+│   │   ├── fn from_row: pub(self)
+│   │   └── fn new: pub
+│   ├── struct Transaction: pub
+│   │   ├── fn from_row: pub(self)
+│   │   └── fn new: pub
+│   ├── struct TransactionState: pub
+│   │   └── fn from_row: pub(self)
+│   ├── enum TransactionStatus: pub
+│   └── mod sqlite: pub
+│       ├── struct SqliteCursor: pub
+│       │   ├── async fn current: pub
+│       │   ├── fn new: pub
+│       │   └── async fn set: pub
+│       ├── struct SqliteStorage: pub
+│       │   ├── async fn migrate: pub
+│       │   └── async fn new: pub
+│       └── struct SqliteTransaction: pub
+│           ├── async fn create: pub
+│           ├── async fn find: pub
+│           ├── async fn find_to_rollback: pub
+│           ├── async fn latest: pub
+│           ├── fn new: pub
+│           ├── async fn next: pub
+│           ├── async fn state: pub
+│           ├── async fn update: pub
+│           └── async fn update_batch: pub
+└── mod validation: pub(crate)
+    ├── async fn evaluate_tx: pub
+    └── async fn validate_tx: pub
