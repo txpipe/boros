@@ -1,4 +1,4 @@
-# 03 — Life map
+# Life map
 
 <!-- GENERATED 2026-08-23 by cairn-survey @ fdec4da via git log --numstat + scc. Partition is curated from generated data; see deviation note. -->
 

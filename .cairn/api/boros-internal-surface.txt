@@ -1,5 +1,5 @@
 GENERATED 2026-08-23 by cairn-survey @ fdec4da via `cargo modules structure --bin boros`.
-NOTE: internal public-item surface of a bin-only crate — NOT a semver API surface (cargo public-api inapplicable; see 00-shape.md deviation notes).
+NOTE: internal public-item surface of a bin-only crate — NOT a semver API surface (cargo public-api inapplicable; see shape.md deviation notes).
 
 
 crate boros

@@ -9,7 +9,7 @@ participants = ["pipeline", "ledger/relay", "network"]
 
 <!-- Curated flow doc, drafted 2026-08-23 by cairn-survey @ fdec4da; diagram traced from src/pipeline/peer_discovery/mod.rs. -->
 
-The `peer_discovery` gasket stage tops up the peer pool toward `desired_peer_count`, choosing 50/50 between on-chain relays (via `RelayDataAdapter` — **currently the mock implementation**, see `src/pipeline/mod.rs:33`) and peers learned from existing peers' peer-sharing.
+The `peer_discovery` gasket stage tops up the peer pool toward `desired_peer_count`, choosing 50/50 between on-chain relays (via `RelayDataAdapter` — **currently the mock implementation**, an acknowledged gap: see `src/pipeline/mod.rs:33` and [decision 0003](../decisions/0003-real-relay-source-for-peer-discovery.md)) and peers learned from existing peers' peer-sharing.
 
 ```mermaid
 sequenceDiagram
@@ -30,4 +30,3 @@ sequenceDiagram
 ## Invariants
 
 - **INV-DISCOVERY-001** `[unverified]` — The pool converges toward `desired_peer_count` and does not add peers beyond outstanding need (`peer_discovery_queue` bounds in-flight additions).
-- **INV-DISCOVERY-002** `[unverified]` — Relay data currently comes from `MockRelayDataAdapter`; production readiness requires a real adapter (this is declared intent, recorded so the gap is visible).

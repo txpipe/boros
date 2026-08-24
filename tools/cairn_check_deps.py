@@ -5,7 +5,7 @@ Derives the module's actual internal dependencies from `cargo modules
 dependencies` and asserts they are a subset of the manifest allowlist.
 
 Known blind spot: cargo-modules does not report const-only uses (see
-docs/architecture/01-topology.md); such edges must be policed by review.
+.cairn/topology.md); such edges must be policed by review.
 """
 
 import re

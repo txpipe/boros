@@ -25,10 +25,7 @@ stores (`SqliteTransaction`, `SqliteCursor`) over a migrated SQLite database.
 - **INV-STORE-003** `[bound → just test-storage]` — `find_to_rollback(slot)` returns only transactions whose recorded slot is affected by a rollback to `slot` (`it_should_find_to_rollback*`).
 - **INV-STORE-004** `[bound → just test-storage]` — Cursor `set` upserts: a second write updates rather than duplicates (`it_should_set_when_it_updates`).
 - **INV-STORE-005** `[llm-judged]` — No SQL and no `sqlx` usage outside this module; consumers speak `Transaction`/`Cursor`, never rows.
-
-## Requirements
-
-- **REQ-STORE-001** `[unverified]` — Migrations run to completion before any query is served (currently by call order in `main.rs`; nothing enforces it).
+- **INV-STORE-006** `[unverified]` — Migrations run to completion before any query is served (currently upheld only by call order in `main.rs`; nothing enforces it).
 
 ## Relationships
 

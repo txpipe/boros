@@ -1,4 +1,4 @@
-# 00 — Shape (census)
+# Shape (census)
 
 <!-- GENERATED 2026-08-23 by cairn-survey @ fdec4da. Numbers derived via tokei, grep, cargo metadata. Do not hand-edit numeric sections; regenerate. -->
 
@@ -41,4 +41,4 @@ Boros is a small, young service (v0.1.0, bin-only crate) whose weight is in its 
 
 1. **Test coverage is bimodal.** `storage` and `queue` are meaningfully tested; `network`, `server`, `signing`, `validation` are essentially untested. The untested set includes the one `unsafe` block (key derivation) and all I/O boundaries.
 2. **The comment ratio (~1%) means the code carries no embedded rationale.** Manifests and flow docs are the only place intent can live — chartering matters more than usual here.
-3. **`gasket` is pinned to a personal git fork**, which is a supply-chain and bus-factor liability worth an explicit decision record.
+3. **`gasket` is pinned to a personal git fork**, a supply-chain and bus-factor liability — decision recorded in [decisions/0001](decisions/0001-return-gasket-to-published-release.md).

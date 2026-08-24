@@ -1,8 +1,8 @@
-# 01 — Topology
+# Topology
 
 <!-- GENERATED 2026-08-23 by cairn-survey @ fdec4da via cargo-depgraph + cargo-modules. Edge list and metrics are derived; layer labels are curated intent (pending human confirmation). -->
 
-> **Deviation note:** SPEC §2 expects crate-level topology. Boros is a single bin crate + one generated `spec` crate, so the crate graph (`01-crate-graph.svg`) is trivial. This file carries the *module-level* topology, which is where the structure actually lives.
+> **Deviation note:** SPEC §2 expects crate-level topology. Boros is a single bin crate + one generated `spec` crate, so the crate graph (`crate-graph.svg`) is trivial. This file carries the *module-level* topology, which is where the structure actually lives.
 
 ## Generated: module dependency edges
 
