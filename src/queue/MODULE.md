@@ -37,7 +37,7 @@ exclusive-lock semantics (token-gated submission, streamed lock state).
 
 | ID | Outcome | Responsibility | Realization | Coverage |
 |---|---|---|---|---|
-| RESP-QUEUE-001 | OUT-WS-002 | Allocate each dispatch batch across queues in proportion to their weights | INV-QUEUE-001, INV-QUEUE-002. Fairness across successive batches is not declared. | partial |
+| RESP-QUEUE-001 | OUT-WS-002 | Allocate each dispatch batch across queues in proportion to their weights | INV-QUEUE-001, INV-QUEUE-002. INV-QUEUE-001's claim that the cap is fully distributed is contradicted by the code: rounding can over- or undershoot the cap, and leftover from the last queue visited is dropped. Fairness across successive batches is not declared. | partial |
 | RESP-QUEUE-002 | OUT-WS-002 | Serialize submissions to chained queues through exclusive, expiring lock tokens | INV-QUEUE-003, INV-QUEUE-004. Lock state is held in memory only. | partial |
 | RESP-QUEUE-003 | OUT-WS-002 | Define queue identity and the default queue | INV-QUEUE-005 | partial |
 
@@ -64,6 +64,8 @@ exclusive-lock semantics (token-gated submission, streamed lock state).
 |---|---|---|---|
 | RESP-QUEUE-001 | Normal drain across configured queues | in-scope | [fanout flow](../../.cairn/flows/fanout.md) |
 | RESP-QUEUE-001 | Queue removed from config while it holds transactions | in-scope | INV-QUEUE-002; downstream signing lookup unassessed |
+| RESP-QUEUE-001 | Weights do not split the cap into whole shares | in-scope | Gap: shares are rounded independently, so the batch can exceed or fall short of the cap; no claim or test covers it |
+| RESP-QUEUE-001 | A queue holds fewer transactions than its share | in-scope | Gap: unused capacity passes to queues in hash order, and the last queue's leftover is dropped, so the batch size depends on that order; no test covers it |
 | RESP-QUEUE-001 | Starvation of low-weight queues under sustained load | unknown | No claim or scenario |
 | RESP-QUEUE-002 | Lock, submit, unlock within the timeout | in-scope | [submit flow](../../.cairn/flows/submit.md) |
 | RESP-QUEUE-002 | Lock holder exceeds the 30 s timeout | in-scope | Lock expires; a late submission is rejected (INV-QUEUE-004) |
@@ -76,7 +78,8 @@ exclusive-lock semantics (token-gated submission, streamed lock state).
 - **INV-QUEUE-001** `[bound → just test-queue]` — Batch quota is allocated proportionally to queue weights and fully distributed (remainder included) (`it_should_calculate_quota`).
   - Surface: `Priority::next` (quota computation).
   - When: At least one queue holds transactions in the requested status.
-  - Then: Each queue's share of the cap is proportional to its weight; capacity a queue cannot use passes to the next queue.
+  - Then: Each queue's share is its weight's fraction of the cap, rounded to the nearest whole transaction; `it_should_calculate_quota` checks one exact split (weights 1/2/2, cap 10 → 2/4/4). Capacity a queue cannot use is added to the share of the queue visited after it.
+  - Contradiction: the claim's "fully distributed (remainder included)" does not hold. Rounding each share can exceed or fall short of the cap (weights 1/1, cap 5 → 3 + 3 = 6; weights 1/1/1, cap 10 → 9). Queues are visited in hash order and the last one's leftover is dropped (cap 50, two weight-1 queues holding 100 and 1 → a batch of 26 or 50). The claim and tier stay as declared: demoting needs a human-approved change (§4), and fixing the code is outside this charter.
   - Migration: moved from Invariants under SPEC §3.4; ID and tier unchanged.
 - **INV-QUEUE-002** `[bound → just test-queue]` — Transactions in queues removed from config are still drained, not stranded (`it_should_return_next_transactions_when_a_queue_is_removed_from_config`).
   - Surface: `Priority::next`.

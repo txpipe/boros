@@ -8,8 +8,6 @@ set shell := ["bash", "-o", "pipefail", "-cu"]
 gate: check-deps-all test-storage test-queue test-ingest
     @echo "gate: all bound constraints passed"
 
-# --- dependency constraints -------------------------------------------------
-
 # Check a module's internal deps against its MODULE.md allowlist
 check-deps id:
     python3 tools/cairn_check_deps.py {{id}}
@@ -18,8 +16,6 @@ check-deps-all:
     python3 tools/cairn_check_deps.py storage
     python3 tools/cairn_check_deps.py queue
     python3 tools/cairn_check_deps.py pipeline
-
-# --- test-backed invariants -------------------------------------------------
 
 test-storage:
     cargo test storage:: -- --nocapture 2>&1 | tail -20
