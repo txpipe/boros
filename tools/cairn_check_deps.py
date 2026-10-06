@@ -4,14 +4,16 @@
 Derives the module's actual internal dependencies from `cargo modules
 dependencies` and asserts they are a subset of the manifest allowlist.
 
-Known blind spot: cargo-modules does not report const-only uses (see
-.cairn/topology.md); such edges must be policed by review.
+Known blind spots: cargo-modules does not report const-only uses (see
+.cairn/topology.md); such edges must be policed by review. The frontmatter
+reader understands only a single string array assigned to `internal-allowed`
+inside `[deps]` (no tomllib before Python 3.11); any other form reads as an
+empty allowlist, which fails closed.
 """
 
 import re
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,8 +31,11 @@ def manifest_allowlist(module_id: str) -> list[str]:
     m = re.match(r"\+\+\+\n(.*?)\n\+\+\+", text, re.DOTALL)
     if not m:
         sys.exit(f"FAIL: no +++ frontmatter in {manifest}")
-    front = tomllib.loads(m.group(1))
-    return [d.split("#")[0] for d in front.get("deps", {}).get("internal-allowed", [])]
+    deps = re.search(r"^\[deps\]\n(.*?)(?=^\[|\Z)", m.group(1), re.DOTALL | re.MULTILINE)
+    allowed = deps and re.search(r"^internal-allowed\s*=\s*\[(.*?)\]", deps.group(1), re.DOTALL | re.MULTILINE)
+    if not allowed:
+        return []
+    return [d.split("#")[0] for d in re.findall(r'"([^"]*)"', allowed.group(1))]
 
 
 def actual_deps(module_id: str) -> set[str]:
