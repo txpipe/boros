@@ -1,6 +1,6 @@
 # Context map
 
-<!-- GENERATED from manifest Relationships sections (manual derivation by cairn-charter 2026-08-23; generator tooling pending — regenerate whenever a manifest's Relationships change). DO NOT EDIT BY HAND. -->
+<!-- GENERATED from manifest Relationships and Expectations sections (manual derivation by cairn-charter 2026-10-06; generator tooling pending — regenerate whenever a manifest's Relationships change). DO NOT EDIT BY HAND. -->
 
 ```mermaid
 flowchart TD
@@ -25,3 +25,7 @@ flowchart TD
 | `storage` | `open-host` (supplier-side declaration) | — | `src/storage/MODULE.md` |
 
 Modules without manifests yet (`ledger`, `network`, `signing`, `server`, `validation`) appear only as referenced suppliers; their consumer-side declarations are pending their own charter.
+
+## Expectations
+
+No manifest declares `Expectations` yet, so there are no consumer → provider links and the reverse index by provider is empty. Collaborator obligations are recorded only as gaps in each manifest's `Boundary allocation`.
