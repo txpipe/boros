@@ -1,4 +1,4 @@
-FROM rust:1.85.0-slim-bullseye AS build
+FROM rust:1.98.0-slim-bookworm AS build
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN apt install -y build-essential pkg-config libssl-dev libsasl2-dev cmake m4
 COPY ./Cargo.toml ./Cargo.toml
 COPY . .
 
-RUN cargo build --release
+RUN cargo build --release --locked
 
 FROM debian:stable-slim
 
