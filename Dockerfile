@@ -8,7 +8,7 @@ RUN apt install -y build-essential pkg-config libssl-dev libsasl2-dev cmake m4
 COPY ./Cargo.toml ./Cargo.toml
 COPY . .
 
-RUN cargo build --release
+RUN cargo build --release --locked
 
 FROM debian:stable-slim
 
